@@ -19,7 +19,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // constants won't change. They're used here to set pin numbers:
 #define ROLL_BUTTON_PIN  0 //D16    // the number of the pushbutton pin
 #define DIE_PIN         15 //D8     // the pin used to change the dice 
-#define TILT_INPUT_PIN   2 //D4     // connected to a tilt sensor to detect when the dice is rocked or tossed
+#define TILT_INPUT_PIN  16 //D0     // connected to a tilt sensor to detect when the dice is rocked or tossed
 #define led1      12 //D6     // not used yet, init to ON
 #define led2      14 //D5     // not used yet, init to ON
 
@@ -197,7 +197,6 @@ void process_roll_request()
   }
   
   display.display(); // write to display
-  delay(100);
 
 }
 
@@ -424,14 +423,18 @@ void process_button_presses()
 
         if(last_mode_button_state[i] == NOT_PROCESSED)
         {
-            //one action per press / hold
-            last_mode_button_state[i] = PROCESSED;
+            //one action per press / hold for all buttons
+            for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
+            {
+              last_mode_button_state[j] = PROCESSED;
+            }
 
             //button was clicked
             switch(i)
             {
-              case ROLL_BUTTON:
               case TILT_INPUT:
+                Serial.println("Tilt");
+              case ROLL_BUTTON:
                 process_roll_request();
                 break;
               case DIE_SELECT_BUTTON:
@@ -453,14 +456,21 @@ void process_button_presses()
 
         if(last_mode_button_state[i] == NOT_PROCESSED)
         {
-            //one action per press / hold
-            last_mode_button_state[i] = PROCESSED;
+            //one action per press / hold for all buttons
+            for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
+            {
+              last_mode_button_state[j] = PROCESSED;
+            }
 
             //button was held
             switch(i)
             {
               case ROLL_BUTTON:
+                //Add a debug mode here that counts through the numbers every half second?
+                break;
               case TILT_INPUT:
+                Serial.println("Tilt");
+                process_roll_request();
                 break;
               case DIE_SELECT_BUTTON:
                 //TBD: enable or disable sound
@@ -516,9 +526,9 @@ void poll_input_signals()
         else if  (last_button_read[i] && current_button_read[i])
         {
             button_state[i] = IS_HELD;
-            Serial.print("Button ");
-            Serial.print(i);
-            Serial.println(" is held.");
+            //Serial.print("Button ");
+            //Serial.print(i);
+            //Serial.println(" is held.");
         }
         else if (last_button_read[i] && !current_button_read[i])
         {
