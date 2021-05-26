@@ -1,3 +1,4 @@
+
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -17,11 +18,13 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // constants won't change. They're used here to set pin numbers:
-#define ROLL_BUTTON_PIN  0 //D16    // the number of the pushbutton pin
-#define DIE_PIN         15 //D8     // the pin used to change the dice 
-#define TILT_INPUT_PIN  16 //D0     // connected to a tilt sensor to detect when the dice is rocked or tossed
-#define led1      12 //D6     // not used yet, init to ON
-#define led2      14 //D5     // not used yet, init to ON
+#define ROLL_BUTTON_PIN    0 //D16    // the number of the pushbutton pin
+#define DIE_PIN           15 //D8     // the pin used to change the dice 
+#define TILT_INPUT_1_PIN  14 //D5     // connected to a tilt sensor to detect when the dice is rocked or tossed
+#define TILT_INPUT_2_PIN  13 //D7
+
+#define led1              12 //D6     // not used yet, init to ON
+#define led2              16 //D0     // not used yet, init to ON
 
 #define LOGO_HEIGHT 43 //64
 #define LOGO_WIDTH 128 //82
@@ -61,17 +64,24 @@ enum
 enum
 {
   ROLL_BUTTON       = 0, //order of array
-  DIE_SELECT_BUTTON = 1,
-  TILT_INPUT        = 2,
-  NUMBER_OF_BUTTONS = 3, //keep at end of list
+  DIE_SELECT_BUTTON,
+  TILT_INPUT_1,
+  TILT_INPUT_2,
+  NUMBER_OF_BUTTONS , //keep at end of list
 };
 
 //TBD, convert this to a struct def
-byte button_state[NUMBER_OF_BUTTONS]               = { IS_NOT_PRESSED,  IS_NOT_PRESSED, IS_NOT_PRESSED };
-byte button_pins [NUMBER_OF_BUTTONS]               = { ROLL_BUTTON_PIN, DIE_PIN,        TILT_INPUT_PIN };
-byte button_types[NUMBER_OF_BUTTONS]               = { ACTIVE_LOW,      ACTIVE_HIGH,    ACTIVE_HIGH};
-long last_interaction_timestamp[NUMBER_OF_BUTTONS] = { 0,               0,              0};
-byte last_mode_button_state[NUMBER_OF_BUTTONS]     = { NOT_PROCESSED,   NOT_PROCESSED,  NOT_PROCESSED};
+byte button_pins               [NUMBER_OF_BUTTONS] = { ROLL_BUTTON_PIN, DIE_PIN,        TILT_INPUT_1_PIN, TILT_INPUT_2_PIN };
+byte button_types              [NUMBER_OF_BUTTONS] = { ACTIVE_LOW,      ACTIVE_HIGH,    ACTIVE_HIGH,      ACTIVE_HIGH};
+byte button_state              [NUMBER_OF_BUTTONS] = { IS_NOT_PRESSED,  IS_NOT_PRESSED, IS_NOT_PRESSED,   IS_NOT_PRESSED };
+byte last_mode_button_state    [NUMBER_OF_BUTTONS] = { NOT_PROCESSED,   NOT_PROCESSED,  NOT_PROCESSED,    NOT_PROCESSED};
+long last_interaction_timestamp[NUMBER_OF_BUTTONS] = { 0,               0,              0,                0};
+byte last_button_read          [NUMBER_OF_BUTTONS] = { false,           false,          false,            false};
+byte current_button_read       [NUMBER_OF_BUTTONS] = { false,           false,          false,            false};
+
+byte roll_flag = false;
+byte tilt_flag = false;
+byte tilt_enabled = true;
 
 void setup() 
 {
@@ -90,11 +100,13 @@ void setup()
   display.clearDisplay();
 
   //attempt to fix the RNG
-  randomSeed(analogRead(A0));
+  randomSeed(ESP.getCycleCount());
 
   // initialize the button pins as an input:
-  pinMode(ROLL_BUTTON_PIN, INPUT);
-  pinMode(DIE_PIN,         INPUT);
+  for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
+  {
+    pinMode(button_pins[i], INPUT_PULLUP);
+  }
   
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
@@ -109,6 +121,10 @@ void setup()
   drawCurDie();
   drawDie();
   display.display();
+
+  attachInterrupt(digitalPinToInterrupt(TILT_INPUT_1_PIN), handle_tilt_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(TILT_INPUT_2_PIN), handle_tilt_interrupt, CHANGE);
+
   Serial.println(F("Startup Complete."));
 }
 
@@ -116,8 +132,76 @@ void loop()
 {
   poll_input_signals();
   process_button_presses();
+  process_led_state();
+
+  //roll the dice when requested
+  if (roll_flag || (tilt_flag && tilt_enabled))
+  {
+    Serial.println("Interrupt Tilt");
+    process_roll_request();
+    roll_flag = false;
+    tilt_flag = false;
+  }
   
 } //end loop
+
+void process_led_state()
+{
+  if(tilt_enabled)
+  {
+    digitalWrite(led1,  digitalRead(button_pins[ROLL_BUTTON]) && 
+                       !digitalRead(button_pins[TILT_INPUT_1]) && 
+                       !digitalRead(button_pins[TILT_INPUT_2]));
+  }
+  else
+  {
+    digitalWrite(led1,  digitalRead(button_pins[ROLL_BUTTON]));
+  }
+  
+  digitalWrite(led2, !digitalRead(button_pins[DIE_SELECT_BUTTON]));
+}
+
+ICACHE_RAM_ATTR void handle_tilt_interrupt()
+{
+  tilt_flag = true;
+}
+
+
+void enable_disable_tilt()
+{
+  tilt_enabled = !tilt_enabled;
+  display.fillScreen(BLACK); // erase the whole display
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("Motion Roll");
+  display.setCursor(0,12);
+  if(tilt_enabled)
+  {
+    Serial.println("Tilt Enabled");
+    display.print("Enabled");
+    display.display(); // write to display
+    delay(1000);
+    display.setCursor(0,24);
+    display.print("Shake upside down to roll");
+    display.display(); // write to display
+  }
+  else
+  {
+    Serial.println("Tilt Disabled");
+    display.print("Disabled");
+    display.display(); // write to display
+    delay(1000);
+    display.setCursor(0,24);
+    display.print("Press button to roll");
+    display.display(); // write to display
+  }
+  delay(1000);
+  display.fillScreen(BLACK);
+  drawCurDie();
+  drawDie();
+  display.display();
+}
 
 void process_roll_request()
 {
@@ -432,10 +516,13 @@ void process_button_presses()
             //button was clicked
             switch(i)
             {
-              case TILT_INPUT:
+              case TILT_INPUT_1:
+              case TILT_INPUT_2:
                 Serial.println("Tilt");
+                tilt_flag = true;
+                break;
               case ROLL_BUTTON:
-                process_roll_request();
+                roll_flag = true;
                 break;
               case DIE_SELECT_BUTTON:
                 process_die_change_request();
@@ -466,14 +553,13 @@ void process_button_presses()
             switch(i)
             {
               case ROLL_BUTTON:
-                //Add a debug mode here that counts through the numbers every half second?
+                enable_disable_tilt();
                 break;
-              case TILT_INPUT:
-                Serial.println("Tilt");
-                process_roll_request();
+              case TILT_INPUT_1:
+              case TILT_INPUT_2:
+                //TBD
                 break;
               case DIE_SELECT_BUTTON:
-                //TBD: enable or disable sound
                 break;
               default:
                 Serial.print("Unknown button press: ");
@@ -494,9 +580,6 @@ void process_button_presses()
 
 void poll_input_signals()
 {
-  static byte last_button_read   [NUMBER_OF_BUTTONS] = {false, false};
-  static byte current_button_read[NUMBER_OF_BUTTONS] = {false, false};
-
     for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
     {
         if( button_types[i] == ACTIVE_HIGH )
