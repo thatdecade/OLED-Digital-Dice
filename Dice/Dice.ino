@@ -37,7 +37,7 @@ static const unsigned char PROGMEM logo_bmp[] =
 int curDie = 6; //Variable to select which die to use
 int die[] = {2, 4, 6, 8, 10, 12, 20, 7};
 
-#define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION 1000
+#define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION 2000
 
 //button routines
 enum
@@ -147,15 +147,13 @@ void loop()
 
 void process_led_state()
 {
-  if(tilt_enabled)
+  if (roll_flag || (tilt_flag && tilt_enabled))
   {
-    digitalWrite(led1,  digitalRead(button_pins[ROLL_BUTTON]) && 
-                       !digitalRead(button_pins[TILT_INPUT_1]) && 
-                       !digitalRead(button_pins[TILT_INPUT_2]));
+    digitalWrite(led1, LOW);
   }
   else
   {
-    digitalWrite(led1,  digitalRead(button_pins[ROLL_BUTTON]));
+    digitalWrite(led1, HIGH);
   }
   
   digitalWrite(led2, !digitalRead(button_pins[DIE_SELECT_BUTTON]));
