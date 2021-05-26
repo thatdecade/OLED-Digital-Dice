@@ -1,11 +1,17 @@
-
+#include "Arduino.h"
+#include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+//#define USE_BATTERY
+
+//screen config
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+#define POLL_RATE_IN_MS 100 // How fast the buttons and screen are processed
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 // The pins for I2C are defined by the Wire-library. 
@@ -18,7 +24,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // constants won't change. They're used here to set pin numbers:
-#define ROLL_BUTTON_PIN    0 //D16    // the number of the pushbutton pin
+//Not all pins are the same, refer to https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+#define ROLL_BUTTON_PIN    0 //D3     // the number of the pushbutton pin
 #define DIE_PIN           15 //D8     // the pin used to change the dice 
 #define TILT_INPUT_1_PIN  14 //D5     // connected to a tilt sensor to detect when the dice is rocked or tossed
 #define TILT_INPUT_2_PIN  13 //D7
@@ -83,6 +90,10 @@ byte roll_flag = false;
 byte tilt_flag = false;
 byte tilt_enabled = true;
 
+#ifndef USE_BATTERY
+ADC_MODE(ADC_VCC);
+#endif
+
 void setup() 
 {
   //setup output to serial monitor
@@ -108,7 +119,7 @@ void setup()
     pinMode(button_pins[i], INPUT_PULLUP);
   }
   pinMode(button_pins[DIE_SELECT_BUTTON], INPUT); //special pin, Active = 3.3V
-  pinMode(A0, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield.
+  pinMode(A0, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield. See https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
   
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
@@ -127,7 +138,7 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_1_PIN), handle_tilt_interrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_2_PIN), handle_tilt_interrupt, CHANGE);
 
-  //WiFi.mode(WIFI_OFF);
+  //WiFi.mode(WIFI_OFF); //TBD, we spend most of our time in light sleep with the radio off
   
   Serial.println(F("Startup Complete."));
 }
@@ -148,35 +159,32 @@ void loop()
   }
 
   //power savings
-  //sleep for the poll time, 10ms (also turn off radio)
-  //Use WAKE_RF_DEFAULT to reconnect wifi
-  //ESP.deepSleep(10E3, WAKE_RF_DISABLED);
-  //nk_deep_sleep(100000);
+  //sleep for the poll time
+  sleep_for_poll_rate();
   
 } //end loop
 
+void callback() {
+  Serial.flush();
+}
 
-#define ets_wdt_disable ((void (*)(void))0x400030f0)
-#define ets_delay_us ((void (*)(int))0x40002ecc)
-
-#define _R (uint32_t *)0x60000700
-
-void nk_deep_sleep(uint64_t time)
+void sleep_for_poll_rate()
 {
-    ets_wdt_disable();
-    *(_R + 4) = 0;
-    *(_R + 17) = 4;
-    *(_R + 1) = *(_R + 7) + 5;
-    *(_R + 6) = 8;
-    *(_R + 2) = 1 << 20;
-    ets_delay_us(10);
-    *(_R + 39) = 0x11;
-    *(_R + 40) = 3;
-    *(_R) &= 0xFCF;
-    *(_R + 1) = *(_R + 7) + (45*(time >> 8));
-    *(_R + 16) = 0x7F;
-    *(_R + 2) = 1 << 20;
-    __asm volatile ("waiti 0");
+  //Source: https://www.mischianti.org/2019/11/21/wemos-d1-mini-esp8266-the-three-type-of-sleep-mode-to-manage-energy-savings-part-4/
+  
+  //Serial.println("Enter light sleep mode");
+  
+  //light sleep config
+  wifi_set_opmode(NULL_MODE);
+  wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
+  wifi_fpm_open();
+  wifi_fpm_set_wakeup_cb(callback);
+  wifi_fpm_do_sleep(POLL_RATE_IN_MS *1000 );
+  delay(POLL_RATE_IN_MS + 1);
+
+  //Serial.println("Exit light sleep mode");
+
+  wifi_set_sleep_type(NONE_SLEEP_T);
 }
 
 void process_led_state()
@@ -523,28 +531,44 @@ void draw7(int roll, int roll2)
 
 void display_voltage()
 {
-  float raw = analogRead(A0);
-  float volts = raw / 1023 * 4.5;
+  const float battery_max = 4.20; //maximum voltage of battery
+  const float battery_min = 3.0;  //minimum voltage of battery before shutdown
   
-  display.fillScreen(BLACK); // erase the whole display
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0,0);
-  display.print("Battery Voltage:");
-  
-  display.setTextSize(2);
-  display.setCursor(0,24);
-  Serial.printf("The internal VCC reads %1.2f volts\n", volts);
-  display.printf("%1.2f volts\n", volts);
-  
-  display.display(); // write to display
-
   while(button_state[DIE_SELECT_BUTTON] == IS_HELD)
   {
+#ifdef USE_BATTERY
+    float raw = analogRead(A0);
+    float volts = raw / 1023 * 4.5;
+    float percent = ((volts - battery_min) / (battery_max - battery_min)) * 100;
+#else
+    float raw = ESP.getVcc();
+    float volts = raw / 1000;
+#endif
+    
+    display.fillScreen(BLACK); // erase the whole display
+    display.setTextColor(WHITE);
+    display.setTextSize(1);
+    display.setCursor(0,0);
+    display.print("Battery Voltage:");
+    
+    display.setTextSize(2);
+    display.setCursor(0,24);
+    Serial.printf("The internal VCC reads %1.2f volts\n", volts);
+    display.printf("%1.2f volts\n", volts);
+    
+#ifdef USE_BATTERY
+    display.setCursor(0,50);
+    display.printf("%1.0f %%\n", percent);
+#endif
+    
+    display.display(); // write to display
+
     poll_input_signals();
     ESP.wdtFeed();
+    sleep_for_poll_rate();
   }
-  
+
+  //go back to main screen
   display.fillScreen(BLACK);
   drawCurDie();
   drawDie();
