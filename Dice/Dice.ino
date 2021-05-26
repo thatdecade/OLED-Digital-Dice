@@ -107,6 +107,8 @@ void setup()
   {
     pinMode(button_pins[i], INPUT_PULLUP);
   }
+  pinMode(button_pins[DIE_SELECT_BUTTON], INPUT); //special pin, Active = 3.3V
+  pinMode(A0, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield.
   
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
@@ -125,6 +127,8 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_1_PIN), handle_tilt_interrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_2_PIN), handle_tilt_interrupt, CHANGE);
 
+  //WiFi.mode(WIFI_OFF);
+  
   Serial.println(F("Startup Complete."));
 }
 
@@ -142,8 +146,38 @@ void loop()
     roll_flag = false;
     tilt_flag = false;
   }
+
+  //power savings
+  //sleep for the poll time, 10ms (also turn off radio)
+  //Use WAKE_RF_DEFAULT to reconnect wifi
+  //ESP.deepSleep(10E3, WAKE_RF_DISABLED);
+  //nk_deep_sleep(100000);
   
 } //end loop
+
+
+#define ets_wdt_disable ((void (*)(void))0x400030f0)
+#define ets_delay_us ((void (*)(int))0x40002ecc)
+
+#define _R (uint32_t *)0x60000700
+
+void nk_deep_sleep(uint64_t time)
+{
+    ets_wdt_disable();
+    *(_R + 4) = 0;
+    *(_R + 17) = 4;
+    *(_R + 1) = *(_R + 7) + 5;
+    *(_R + 6) = 8;
+    *(_R + 2) = 1 << 20;
+    ets_delay_us(10);
+    *(_R + 39) = 0x11;
+    *(_R + 40) = 3;
+    *(_R) &= 0xFCF;
+    *(_R + 1) = *(_R + 7) + (45*(time >> 8));
+    *(_R + 16) = 0x7F;
+    *(_R + 2) = 1 << 20;
+    __asm volatile ("waiti 0");
+}
 
 void process_led_state()
 {
@@ -487,6 +521,36 @@ void draw7(int roll, int roll2)
   }//end roll
 }// end draw7
 
+void display_voltage()
+{
+  float raw = analogRead(A0);
+  float volts = raw / 1023 * 4.5;
+  
+  display.fillScreen(BLACK); // erase the whole display
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("Battery Voltage:");
+  
+  display.setTextSize(2);
+  display.setCursor(0,24);
+  Serial.printf("The internal VCC reads %1.2f volts\n", volts);
+  display.printf("%1.2f volts\n", volts);
+  
+  display.display(); // write to display
+
+  while(button_state[DIE_SELECT_BUTTON] == IS_HELD)
+  {
+    poll_input_signals();
+    ESP.wdtFeed();
+  }
+  
+  display.fillScreen(BLACK);
+  drawCurDie();
+  drawDie();
+  display.display();
+}
+
 //--------------------------------------
 //          Button Subroutines         |
 //--------------------------------------
@@ -558,6 +622,8 @@ void process_button_presses()
                 //TBD
                 break;
               case DIE_SELECT_BUTTON:
+                //show battery voltage
+                display_voltage();
                 break;
               default:
                 Serial.print("Unknown button press: ");
