@@ -73,6 +73,7 @@ int die[] = {2, 4, 6, 8, 10, 12, 20, 7};
 #define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION 2000
 
 //button routines
+//TBD, convert these to typedef enum
 enum
 {
    PROCESSED,
