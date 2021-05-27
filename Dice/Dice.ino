@@ -1,3 +1,28 @@
+/* Electronic Dice
+ *  
+ *  Wiring:
+ *  D2(SDA), D1(SCL) to OLED
+ *  D0 to RST
+ *  D3 to Button (ROLL) to Ground
+ *  D8 to Button (DIE) to 3.3V
+ *  D5 to Tilt Sensor to Ground
+ *  D7 to Tilt Sensor to Ground
+ *  D6 to Button LED to Ground
+ *  D0 to Button LED to Ground (MOVE THIS)
+ *  
+ *  Update the logo_bmp with your own image using LCDAssistant
+ *  
+ *  If you are not using a battery, comment out #define USE_BATTERY
+ *  
+ *  Usage:
+ *  Press ROLL button to roll dice.
+ *  Shake tilt sensors to roll dice.
+ *  Hold ROLL button to disable tilt sensors.
+ *  Press DICE button to change dice.
+ *  Hold DICE button to check battery info.
+ *  
+ */
+
 #include "Arduino.h"
 #include <ESP8266WiFi.h>
 #include <SPI.h>
@@ -12,6 +37,7 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 #define POLL_RATE_IN_MS 100 // How fast the buttons and screen are processed
+#define DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY 15 * 60 * 1000 // 15 mins
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 // The pins for I2C are defined by the Wire-library. 
@@ -90,6 +116,8 @@ byte roll_flag = false;
 byte tilt_flag = false;
 byte tilt_enabled = true;
 
+byte activity_flag = true;
+
 #ifndef USE_BATTERY
 ADC_MODE(ADC_VCC);
 #endif
@@ -119,8 +147,10 @@ void setup()
     pinMode(button_pins[i], INPUT_PULLUP);
   }
   pinMode(button_pins[DIE_SELECT_BUTTON], INPUT); //special pin, Active = 3.3V
+#ifndef USE_BATTERY
   pinMode(A0, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield. See https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
-  
+#endif
+
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
   digitalWrite(led1, HIGH);
@@ -130,21 +160,24 @@ void setup()
   display.drawBitmap((SCREEN_WIDTH - LOGO_WIDTH) / 2, (SCREEN_HEIGHT - LOGO_HEIGHT) / 2, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
   display.display();
   delay(2000);
+  
   display.fillScreen(BLACK);
   drawCurDie();
   drawDie();
   display.display();
 
+  //start die rollers
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_1_PIN), handle_tilt_interrupt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(TILT_INPUT_2_PIN), handle_tilt_interrupt, CHANGE);
 
-  //WiFi.mode(WIFI_OFF); //TBD, we spend most of our time in light sleep with the radio off
+  WiFi.mode(WIFI_OFF); //We spend most of our time in light sleep with the radio off
   
   Serial.println(F("Startup Complete."));
 }
 
 void loop() 
 {
+  //button and LED stuff
   poll_input_signals();
   process_button_presses();
   process_led_state();
@@ -159,13 +192,85 @@ void loop()
   }
 
   //power savings
-  //sleep for the poll time
+  //check for activity timeout, then light sleep until the next poll interval
+  check_for_inactivity_then_power_down();
   sleep_for_poll_rate();
   
 } //end loop
 
 void callback() {
   Serial.flush();
+}
+
+void setup_text_to_display(int text_color, int text_size, int cursor_x, int cursor_y)
+{
+    display.setTextColor(text_color);
+    display.setTextSize(text_size);
+    display.setCursor(cursor_x,cursor_y);
+}
+
+void check_for_inactivity_then_power_down()
+{
+  static long last_activity = 0;
+
+  if (activity_flag)
+  {
+    activity_flag = false;
+    last_activity = millis();
+  }
+
+  if(millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY - 10000))
+  {
+    digitalWrite(led1, LOW);
+    digitalWrite(led2, LOW);
+    
+    long seconds = ( (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY) - millis() ) / 1000;
+
+    Serial.printf("Inactive for %ld minutes. Shutting down in %ld seconds.\n", DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY/60000, seconds/1000);
+    
+    display.fillScreen(BLACK); // erase the whole display
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
+    display.print("Shutting Down in");
+    
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 18);
+    display.print(seconds);
+    
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 44);
+    display.print("seconds.");
+    
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 56);
+    if(tilt_enabled)
+    {
+      display.print("Shake dice to stop.");
+    }
+    else
+    {
+      display.print("Press any button to stop.");
+    }
+    display.display(); // write to display
+  }
+
+  if(millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY))
+  {
+    digitalWrite(led1, LOW);
+    digitalWrite(led2, LOW);
+    
+    display.fillScreen(BLACK); // erase the whole display
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
+    display.print("Shutting Down");
+    
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
+    display.print("Good Bye");
+    display.display(); // write to display
+    delay(1000);
+    
+    display.fillScreen(BLACK); // erase the whole display
+    display.display(); // write to display
+    
+    //For this to work, connect D0 and RST pins with a jumper wire.
+    Serial.println("Enter deep sleep mode");
+    ESP.deepSleep(0, RF_DISABLED);
+  }
 }
 
 void sleep_for_poll_rate()
@@ -211,11 +316,9 @@ void enable_disable_tilt()
 {
   tilt_enabled = !tilt_enabled;
   display.fillScreen(BLACK); // erase the whole display
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0,0);
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
   display.print("Motion Roll");
-  display.setCursor(0,12);
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 12);
   if(tilt_enabled)
   {
     Serial.println("Tilt Enabled");
@@ -389,9 +492,7 @@ void drawDie()
 
 void drawCurDie()
 {
-  display.setTextSize(2);
-  display.setTextColor(WHITE);
-  display.setCursor(2,0);
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 2, /* y = */ 0);
   if(die[curDie] == 2)
   {
     display.print("Coin:");
@@ -546,13 +647,10 @@ void display_voltage()
 #endif
     
     display.fillScreen(BLACK); // erase the whole display
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(0,0);
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
     display.print("Battery Voltage:");
     
-    display.setTextSize(2);
-    display.setCursor(0,24);
+    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
     Serial.printf("The internal VCC reads %1.2f volts\n", volts);
     display.printf("%1.2f volts\n", volts);
     
@@ -565,6 +663,7 @@ void display_voltage()
 
     poll_input_signals();
     ESP.wdtFeed();
+    check_for_inactivity_then_power_down(); //if user holds button too long, turn off
     sleep_for_poll_rate();
   }
 
@@ -593,6 +692,8 @@ void process_button_presses()
 
         if(last_mode_button_state[i] == NOT_PROCESSED)
         {
+            activity_flag = true;
+            
             //one action per press / hold for all buttons
             for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
             {
@@ -629,6 +730,8 @@ void process_button_presses()
 
         if(last_mode_button_state[i] == NOT_PROCESSED)
         {
+            activity_flag = true;
+            
             //one action per press / hold for all buttons
             for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
             {
@@ -690,9 +793,9 @@ void poll_input_signals()
         {
             //button was just pressed
             button_state[i] = IS_PRESSED;
-            Serial.print("Button ");
-            Serial.print(i);
-            Serial.println(" was pressed.");
+            //Serial.print("Button ");
+            //Serial.print(i);
+            //Serial.println(" was pressed.");
         }
         else if  (last_button_read[i] && current_button_read[i])
         {
@@ -705,9 +808,9 @@ void poll_input_signals()
         {
             //button was just released
             button_state[i] = WAS_RELEASED;
-            Serial.print("Button ");
-            Serial.print(i);
-            Serial.println(" was released.");
+            //Serial.print("Button ");
+            //Serial.print(i);
+            //Serial.println(" was released.");
         }
         else
         {
