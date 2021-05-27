@@ -2,7 +2,7 @@
 
 This project is based on the work of Joe Coburn for the original design and Fernando Hernandez (Dsk001) for the Wemos version.
 
-In this branch, I fixed the button debouncing and randomizer.
+In this branch, I fixed the button debouncing and randomizer. Adding battery and shake sensor features.
 
 Sources:
 * 2017 Joe Coburn https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
