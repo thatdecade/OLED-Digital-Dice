@@ -27,7 +27,7 @@ For battery operation:
 Some openscad files are included in the project.  They assume you have downloaded the source files from https://www.prusaprinters.org/prints/66933-electronic-dice
 
 * oled_face_mod.stl - The front shell oled area is trimmed to make it easier to fit.
-* oled_battery_mod.stl - The back shell includes cutaways for the battery shield, second usb connector, and a on/off push button.
+* battery_back_mod.stl - The back shell includes cutaways for the battery shield, second usb connector, and a on/off push button.
 
 # Assembly:
 
