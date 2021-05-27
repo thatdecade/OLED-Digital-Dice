@@ -2,7 +2,15 @@
 
 This project is based on the work of Joe Coburn for the original design and Fernando Hernandez (Dsk001) for the Wemos version.
 
-In this branch, I fixed the button debouncing and randomizer. Adding battery and shake sensor features.
+This Electronic Die has the capability to swap between a coin and die with 4, 6, 8, 10, 12, and 20 sides and also a double 6 sided. Useful for table top gaming, or dice games that require two 6 sided die.
+
+This version adds:
+* Button debouncing
+* Fixed randomizer
+* Battery monitoring
+* Shake sensor for dice rolls
+
+<img src="Images/IMG_0601.JPG" width="500">
 
 Sources:
 * 2017 Joe Coburn https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
