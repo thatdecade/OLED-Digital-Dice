@@ -30,6 +30,8 @@ For battery operation:
 * 1 x 500mAh Lipo (optional)
 * 1 x LED Latching Push Button
 
+We are a participant in the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for us to earn fees by linking to Amazon.com and affiliated sites.
+
 # Printing:
 
 Some openscad files are included in the project.  They assume you have downloaded the source files from https://www.prusaprinters.org/prints/66933-electronic-dice
