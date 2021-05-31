@@ -21,14 +21,14 @@ Sources:
 
 * 1 x D1 Mini (ESP8266, WiFi capable) https://amzn.to/3fCb4l7
 * 1 x 0.96" I2C IIC SPI Serial 128x64 OLED screen https://amzn.to/3fxuOpV
-* 2 x 16mm Push Buttons (LED optional) https://amzn.to/3uBKxbC
+* 2 x 12mm Push Buttons (LED optional) https://amzn.to/3p69FGo
 * 2 x Metal Ball Tilt Switches (optional) https://amzn.to/34mlJKk
 
-For battery operation:
+For battery operation (optional):
 
-* 1 x Wemos D1 Battery Shield (optional)
-* 1 x 500mAh Lipo (optional)
-* 1 x LED Latching Push Button https://amzn.to/34tXlGF
+* 1 x Wemos D1 Battery Shield https://amzn.to/3c98Rvk
+* 1 x 500mAh Lipo 
+* 1 x 12mm LED Latching Push Button https://amzn.to/3uBmppL
 
 We are a participant in the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for us to earn fees by linking to Amazon.com and affiliated sites.
 
