@@ -19,9 +19,9 @@ Sources:
 
 # Hardware Used:
 
-* 1 x D1 Mini (ESP8266, WiFi capable)
-* 1 x 0.96" I2C IIC SPI Serial 128x64 OLED screen
-* 2 x LED Push Buttons
+* 1 x D1 Mini (ESP8266, WiFi capable) https://amzn.to/3fCb4l7
+* 1 x 0.96" I2C IIC SPI Serial 128x64 OLED screen https://amzn.to/3fxuOpV
+* 2 x 16mm Push Buttons (LED optional) https://amzn.to/3uBKxbC
 * 2 x Metal Ball Tilt Switches (optional) https://amzn.to/34mlJKk
 
 For battery operation:
