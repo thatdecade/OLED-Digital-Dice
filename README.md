@@ -10,6 +10,8 @@ This version adds:
 * Battery monitoring
 * Shake sensor for dice rolls
 
+Two tilt sensors are used to detect a shake movement.  This helps provide a more chaotic response. 
+
 <img src="Images/IMG_0601.JPG" width="500">
 
 Sources:
@@ -50,7 +52,7 @@ Wire up the following:
  *  D5 to Tilt Sensor to Ground
  *  D7 to Tilt Sensor to Ground
  *  D6 to Button (ROLL) LED to Ground
- *  D0 to Button (DIE) LED to Ground (I NEED TO MOVE THIS)
+ *  D0 to Button (DIE) LED to Ground (TBD: I NEED TO MOVE THIS, CONFLICTS WITH DEEP SLEEP)
 
 If using the Battery Shield and you have v1.2.0 or higher, you can solder jumper J2 to connect the battery to A0 through a 130k resistor.
 If not using a battery, comment out #define USE_BATTERY in code.
