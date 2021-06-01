@@ -69,11 +69,13 @@ Wire up the following:
  *  D2(SDA), D1(SCL) to OLED
  *  D0 to RST
  *  D3 to Button (ROLL) to Ground
- *  D8 to Button (DIE) to 3.3V
+ *  D4 to Button (DIE) to 3.3V
  *  D5 to Tilt Sensor to Ground
- *  D7 to Tilt Sensor to Ground
+ *  RX to Tilt Sensor to Ground
  *  D6 to Button (ROLL) LED to Ground
- *  D0 to Button (DIE) LED to Ground (TBD: I NEED TO MOVE THIS, CONFLICTS WITH DEEP SLEEP)
+ *  D8 to Button (DIE) LED to Ground
+ *  D7 to Neo Pixel Data (optional)
+ *  A0 to Battery through Resistor Divider (optional)
 
 If using the Battery Shield and you have v1.2.0 or higher, you can solder jumper J2 to connect the battery to A0 through a 130k resistor.
 If not using a battery, comment out #define USE_BATTERY in code.
