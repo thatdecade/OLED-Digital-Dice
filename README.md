@@ -9,6 +9,7 @@ This version adds:
 * Fixed randomizer
 * Battery monitoring
 * Shake sensor for dice rolls
+* Auto Power Off (Deep Sleep)
 
 Two tilt sensors are used to detect a shake movement.  This helps provide a more chaotic response. 
 
@@ -61,3 +62,13 @@ Test the circuit, then stuff into the 3D printed case.  Use hot glue or similar 
 
 Glue the tilt switch with the wires facing up, so the dice is only rolled when you shake it on it's side or upside down.
 This prevents the number from changing while the dice is just sitting on the table.
+
+# Usage: 
+ 
+*  Press ROLL button to roll dice.
+*  Shake tilt sensors to roll dice.
+*  Hold ROLL button to disable tilt sensors.
+*  Press DICE button to change dice.
+*  Hold DICE button to check battery info.
+
+If USE_BATTERY was defined in code, after 15 minutes without a button press the dice will turn off the display and enter deep sleep.  Toggle the RST pin or turn off and on to wake up.
