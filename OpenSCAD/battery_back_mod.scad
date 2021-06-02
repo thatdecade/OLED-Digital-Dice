@@ -4,6 +4,8 @@
 
 */
 
+cover_programming_usb = 0; //0 for uncovered, 1 for covered
+
 sliding_fit = 2;
 friction_fit = 0.2;
 
@@ -11,13 +13,16 @@ friction_fit = 0.2;
 outer_shell_z = 25;
 
 back_wall_thickness = 1.4; //1.3 //wemos usb is 2 layer heights, charger needs 6 layer heights
-side_wall_thickness = 2.4;
+side_wall_thickness = 3;
 
-battery_shield_distance_from_wemos_pcb = 11.06;
+battery_shield_distance_from_side_wall = 7;
+
+switch_hole_diameter = 12;
 
 usb_opening_width  = 8.5;
 usb_opening_height = 3;
 usb_x_offset_from_center = 7;
+usb_y_offset_for_pcb_thickness = 1;
 
 usb_board_width  = 23.66+2;
 usb_board_height = 6.82+2;
@@ -28,10 +33,9 @@ battery_z = 35 + sliding_fit;
 
 battery_lid_wall_thickness = 1.2;
     
-battery_y_offset = -1; //reduce overlap with die button clearance
+battery_y_offset = -0.6; //reduce overlap with die button clearance
 
-switch_hole_diameter = 12;
-
+//used to ensure wiring clearanceW
 DIE_switch_x = 12;
 DIE_switch_y = 30;
 DIE_switch_z = 12;
@@ -42,12 +46,18 @@ difference()
     {
         translate([0,25,49.6]) rotate([-90,0,0]) import("back.stl");
         draw_battery_lid();
+        if (cover_programming_usb) draw_usb_cover();
     }
     
     draw_charger_usb_slot();
     draw_charger_shield();
     draw_power_switch();
 
+}
+
+module draw_usb_cover()
+{
+    translate([-usb_opening_width/2-0.5,back_wall_thickness+0.5,0]) cube([usb_opening_width+1,usb_opening_height+1,0.2]);
 }
 
 module draw_power_switch()
@@ -64,15 +74,19 @@ module draw_power_switch()
 
 module draw_charger_shield()
 {
+    inner_tab_thickness = 0.6;
+    
     //battery board
-    translate([-usb_board_width/2,side_wall_thickness+battery_shield_distance_from_wemos_pcb,back_wall_thickness]) 
-    cube([usb_board_width,usb_board_height,40], center=false);
+    translate([-usb_board_width/2,side_wall_thickness+battery_shield_distance_from_side_wall-inner_tab_thickness,back_wall_thickness]) 
+    cube([usb_board_width,usb_board_height+inner_tab_thickness,40], center=false);
+    
+    //inner tab
 }
 
 module draw_charger_usb_slot()
 {
     //usb slot
-    translate([-usb_opening_width/2-usb_x_offset_from_center,side_wall_thickness+battery_shield_distance_from_wemos_pcb,-0.1]) 
+    translate([-usb_opening_width/2-usb_x_offset_from_center,side_wall_thickness+battery_shield_distance_from_side_wall+usb_y_offset_for_pcb_thickness,-0.1]) 
     cube([usb_opening_width,usb_opening_height,4], center=false);
         
 }
