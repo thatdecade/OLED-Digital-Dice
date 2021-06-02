@@ -1,15 +1,15 @@
 
 /* Electronic Dice:
- *  
+ *
  *  Author: Dustin Westaby
  *  Date: June 1, 2021
- *  
+ *
  *  Sources:
  *   - 2017 Joe Coburn (joecoburn) https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
  *   - 2018 Tomas Carlsson (TomasC62) https://www.instructables.com/Arduino-Oled-Dice/
  *   - 2021 Fernando Hernandez (Dsk001) https://www.prusaprinters.org/prints/66933-electronic-dice
  *   - 2021 Josh Segatto (alienslacker / alieneila) https://twitter.com/alienslacker/status/1398511306546765828
- *  
+ *
  *  Wiring:
  *  D2(SDA), D1(SCL) to OLED
  *  D0 to RST
@@ -20,34 +20,38 @@
  *  D6 to Button LED (ROLL) to Ground
  *  D8 to Button LED (DIE) to Ground
  *  D7 to Neo Pixel Data
- *  
+ *
  *  Update the logo_bmp with your own image using LCDAssistant
- *  
- *  If you are not using a battery, comment out #define USE_BATTERY
- *  If you are not using a neopixel strip, comment out #define USE_NEOPIXELS
- *  
+ *
  *  Usage:
  *  Press ROLL button to roll dice.
  *  Shake tilt sensors to roll dice.
  *  Hold ROLL button to disable tilt sensors.
  *  Press DICE button to change dice.
  *  Hold DICE button to check battery info.
- *  
+ *
  */
 
- 
+
 /* ************************************************* */
 
 /* These are some top level options without touching main code */
 
-//#define USE_BATTERY
-//#define USE_NEOPIXELS
+//#define USE_BATTERY //comment out to disable
 
-#define NUMBER_OF_NEOPIXELS 20
+#define NUMBER_OF_NEOPIXELS    0 //set to 0 to disable
+
+#define NUMBER_OF_TILT_SENSORS 2 //set to 0 to disable
+
+#define USE_OLD_PINS //Support older builds, so I don't have to re-wire them
+
 #define TYPE_OF_NEOPIXELS (NEO_GRB + NEO_KHZ800)
 
 #define HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS    100 // 100 = 10 Hz
+
 #define DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY     900000 // 900,000 = 15 * 60 * 1000 = 15 mins
+
+#define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION     2000 // 2 seconds
 
 /* ************************************************* */
 
@@ -58,11 +62,13 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#ifdef USE_NEOPIXELS
+#if (NUMBER_OF_NEOPIXELS > 0)
 #include <Adafruit_NeoPixel.h>
 #endif
 
 //Not all pins are interchangable, refer to https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+#ifndef USE_OLD_PINS 
+//These are the new pin outs
 #define DEEP_SLEEP_EXIT_PIN 16 // D0 - Wire to RST
 #define DISPLAY_SCL_PIN      5 // D1 - I2C
 #define DISPLAY_SDA_PIN      4 // D2 - I2C
@@ -74,13 +80,23 @@
 #define DICE_LED_PIN        15 // D8 - Active High Output
 #define TILT_SENSOR_2_PIN    3 // RX - Active High Interrupt
 #define BATTERY_MONITOR_PIN A0 // A0 - Analog Input
+#else 
+//these are the old pins outs
+#define ROLL_BUTTON_PIN      0
+#define DIE_BUTTON_PIN      15
+#define TILT_SENSOR_1_PIN   14
+#define TILT_SENSOR_2_PIN   13
+#define ROLL_LED_PIN        12
+#define DICE_LED_PIN        16
+#define BATTERY_MONITOR_PIN A0 // A0 - Analog Input
+#endif
 
 //screen config
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-// The pins for I2C are defined by the Wire-library. 
+// The pins for I2C are defined by the Wire-library.
 // On an arduino UNO:       A4(SDA), A5(SCL)
 // On an arduino MEGA 2560: 20(SDA), 21(SCL)
 // On an arduino LEONARDO:   2(SDA),  3(SCL),
@@ -96,7 +112,7 @@ static const unsigned char PROGMEM logo_bmp[] =
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x38,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xFF,0x00,0x00,0x07,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF0,0x00,0x40,0x01,0xFF,0x00,0x00,0x07,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF0,0x00,0x38,0x39,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF1,0xFC,0x03,0x39,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF1,0xFE,0x00,0x01,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF0,0x00,0x00,0x01,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF0,0x00,0x00,0x01,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x9F,0xFF,0xFF,0xFF,0xFF,0xF0,0x00,0x00,0x01,0xFF,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0xFF,0xFF,0xFF,0xF8,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0xF8,0xFF,0xFF,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x07,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x60,0x1C,0x03,0x0F,0xFF,0x00,0xFC,0x1F,0xFF,0xE0,0x1C,0x00,0xFE,0x00,0xC0,0x06,0x60,0x1C,0x03,0x0F,0xFF,0x03,0xCF,0x1F,0xFF,0xE0,0x1C,0x00,0xFF,0xE0,0x60,0x0E,0x60,0x1C,0x03,0x0C,0x00,0x06,0x01,0x00,0x30,0x00,0x3C,0x00,0xC0,0x70,0x30,0x0C,0x60,0x34,0x06,0x0C,0x00,0x06,0x00,0x00,0x30,0x00,0x36,0x00,0xC0,0x30,0x30,0x18,0x30,0x36,0x06,0x0C,0x00,0x0C,0x00,0x00,0x30,0x00,0x26,0x00,0xC0,0x18,0x18,0x30,0x30,0x26,0x06,0x0C,0x00,0x0C,0x00,0x00,0x30,0x00,0x63,0x00,0xC0,0x18,0x0C,0x30,0x30,0x22,0x06,0x0C,0x00,0x0E,0x00,0x00,0x30,0x00,0x63,0x00,0xC0,0x30,0x0C,0x60,0x30,0x62,0x0C,0x0C,0x00,0x07,0x00,0x00,0x30,0x00,0xC1,0x00,0xC0,0x30,0x06,0xC0,0x18,0x63,0x0C,0x0F,0xFF,0x03,0xE0,0x00,0x30,0x00,0xC1,0x80,0xFF,0xC0,0x03,0xC0,0x18,0x43,0x0C,0x0F,0xFF,0x01,0xFE,0x00,0x30,0x00,0x81,0x80,0xFF,0xC0,0x03,0x80,0x18,0x41,0x0C,0x0C,0x00,0x00,0x0F,0x00,0x30,0x01,0x80,0x80,0xC0,0x30,0x01,0x80,0x18,0xC1,0x18,0x0C,0x00,0x00,0x03,0x80,0x30,0x01,0x80,0xC0,0xC0,0x18,0x01,0x80,0x0C,0xC1,0x98,0x0C,0x00,0x00,0x01,0x80,0x30,0x03,0x00,0xC0,0xC0,0x18,0x01,0x80,0x0C,0x81,0x98,0x0C,0x00,0x00,0x01,0x80,0x30,0x03,0xFF,0xE0,0xC0,0x18,0x01,0x80,0x0C,0x80,0x98,0x0C,0x00,0x00,0x01,0x80,0x30,0x03,0x00,0x60,0xC0,0x18,0x01,0x80,0x0D,0x80,0x90,0x0C,0x00,0x00,0x01,0x80,0x30,0x06,0x00,0x20,0xC0,0x18,0x01,0x80,0x07,0x80,0xF0,0x0C,0x00,0x08,0x03,0x80,0x30,0x06,0x00,0x30,0xC0,0x38,0x01,0x80,0x07,0x00,0xF0,0x0F,0xFF,0x0F,0x07,0x00,0x30,0x0C,0x00,0x30,0xFF,0xF0,0x01,0x80,0x07,0x00,0x70,0x0F,0xFF,0x03,0xFC,0x00,0x30,0x0C,0x00,0x18,0xFF,0xC0,0x01,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 };
 
-#ifdef USE_NEOPIXELS
+#if (NUMBER_OF_NEOPIXELS > 0)
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMBER_OF_NEOPIXELS, NEOPIXEL_DATA_PIN, TYPE_OF_NEOPIXELS);
 int started = 0;
 #endif
@@ -105,48 +121,65 @@ int started = 0;
 int curDie = 6; //Variable to select which die to use
 int die[] = {2, 4, 6, 8, 10, 12, 20, 7};
 
-#define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION 2000
-
+/* ***************** */
 //button routines
-//TBD, convert these to typedef enum
-enum
+typedef enum switch_status { PROCESSED, NOT_PROCESSED, };
+typedef enum switch_state  { IS_NOT_PRESSED, IS_PRESSED, WAS_RELEASED, IS_HELD, };
+typedef enum switch_type   { ACTIVE_HIGH, ACTIVE_LOW, ANALOG_THRESHOLD, ACTIVE_HIGH_NO_PULLUP};
+typedef enum button_link   { /* order of list */ ROLL_BUTTON = 0, DIE_SELECT_BUTTON, TILT_INPUT_1, TILT_INPUT_2, /* keep at end of list */ NUMBER_OF_BUTTONS,  };
+
+typedef struct
 {
-   PROCESSED,
-   NOT_PROCESSED
+    byte          pin;
+    switch_type   type;
+    switch_state  state;
+    switch_status status;
+    long          last_interaction_timestamp;
+    byte          last_button_read;
+    byte          current_button_read;
+} button_struct;
+
+button_struct button_info[NUMBER_OF_BUTTONS] =
+{
+  {                /* button_info[ROLL_BUTTON] */
+    /* pin       = */ ROLL_BUTTON_PIN,
+    /* type      = */ ACTIVE_LOW,
+    /* state     = */ IS_NOT_PRESSED,
+    /* status    = */ NOT_PROCESSED,
+    /* timestamp = */ 0,
+    /* last      = */ false,
+    /* current   = */ false,
+  },
+  {                /* button_info[DIE_SELECT_BUTTON] */
+    /* pin       = */ DIE_BUTTON_PIN,
+    /* type      = */ ACTIVE_HIGH_NO_PULLUP,
+    /* state     = */ IS_NOT_PRESSED,
+    /* status    = */ NOT_PROCESSED,
+    /* timestamp = */ 0,
+    /* last      = */ false,
+    /* current   = */ false,
+  },
+  {                /* button_info[TILT_INPUT_1] */
+    /* pin       = */ TILT_SENSOR_1_PIN,
+    /* type      = */ ACTIVE_HIGH,
+    /* state     = */ IS_NOT_PRESSED,
+    /* status    = */ NOT_PROCESSED,
+    /* timestamp = */ 0,
+    /* last      = */ false,
+    /* current   = */ false,
+  },
+  {                /* button_info[TILT_INPUT_2] */
+    /* pin       = */ TILT_SENSOR_2_PIN,
+    /* type      = */ ACTIVE_HIGH,
+    /* state     = */ IS_NOT_PRESSED,
+    /* status    = */ NOT_PROCESSED,
+    /* timestamp = */ 0,
+    /* last      = */ false,
+    /* current   = */ false,
+  },
 };
 
-enum
-{
-  IS_NOT_PRESSED,
-  IS_PRESSED,
-  WAS_RELEASED,
-  IS_HELD,
-};
-
-enum
-{
-  ACTIVE_HIGH,
-  ACTIVE_LOW,
-  ANALOG_THRESHOLD,
-};
-
-enum
-{
-  ROLL_BUTTON       = 0, //order of array
-  DIE_SELECT_BUTTON,
-  TILT_INPUT_1,
-  TILT_INPUT_2,
-  NUMBER_OF_BUTTONS , //keep at end of list
-};
-
-//TBD, convert this to a struct def
-byte button_pins               [NUMBER_OF_BUTTONS] = { ROLL_BUTTON_PIN, DIE_BUTTON_PIN, TILT_SENSOR_1_PIN, TILT_SENSOR_2_PIN };
-byte button_types              [NUMBER_OF_BUTTONS] = { ACTIVE_LOW,      ACTIVE_HIGH,    ACTIVE_HIGH,       ACTIVE_HIGH};
-byte button_state              [NUMBER_OF_BUTTONS] = { IS_NOT_PRESSED,  IS_NOT_PRESSED, IS_NOT_PRESSED,    IS_NOT_PRESSED };
-byte last_mode_button_state    [NUMBER_OF_BUTTONS] = { NOT_PROCESSED,   NOT_PROCESSED,  NOT_PROCESSED,     NOT_PROCESSED};
-long last_interaction_timestamp[NUMBER_OF_BUTTONS] = { 0,               0,              0,                 0};
-byte last_button_read          [NUMBER_OF_BUTTONS] = { false,           false,          false,             false};
-byte current_button_read       [NUMBER_OF_BUTTONS] = { false,           false,          false,             false};
+/* ***************** */
 
 byte roll_flag = false;
 byte tilt_flag = false;
@@ -158,12 +191,12 @@ byte activity_flag = true;
 ADC_MODE(ADC_VCC);
 #endif
 
-void setup() 
+void setup()
 {
   //setup output to serial monitor
   Serial.begin(115200);
 
-#ifdef USE_NEOPIXELS
+ #if (NUMBER_OF_NEOPIXELS > 0)
   strip.begin();
   strip.setBrightness(50);
   strip.show(); // Initialize all pixels to 'off'
@@ -180,15 +213,19 @@ void setup()
   // Clear the display buffer
   display.clearDisplay();
 
-  //attempt to fix the RNG
-  randomSeed(ESP.getCycleCount());
-
   // initialize the button pins as an input:
   for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
   {
-    pinMode(button_pins[i], INPUT_PULLUP);
+    if(button_info[i].type == ACTIVE_HIGH_NO_PULLUP)
+    {
+      pinMode(button_info[i].pin, INPUT); //special pin, Active = 3.3V
+    }
+    else
+    {
+      pinMode(button_info[i].pin, INPUT_PULLUP);
+    }
   }
-  pinMode(button_pins[DIE_SELECT_BUTTON], INPUT); //special pin, Active = 3.3V
+  
 #ifndef USE_BATTERY
   pinMode(BATTERY_MONITOR_PIN, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield. See https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
 #endif
@@ -202,7 +239,7 @@ void setup()
   display.drawBitmap((SCREEN_WIDTH - LOGO_WIDTH) / 2, (SCREEN_HEIGHT - LOGO_HEIGHT) / 2, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
   display.display();
   delay(2000);
-  
+
   display.fillScreen(BLACK);
   drawCurDie();
   drawDie();
@@ -213,14 +250,14 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(TILT_SENSOR_2_PIN), handle_tilt_interrupt, CHANGE);
 
   WiFi.mode(WIFI_OFF); //We spend most of our time in light sleep with the radio off
-  
+
   Serial.println(F("Startup Complete."));
 }
 
-void loop() 
+void loop()
 {
 
-#ifdef USE_NEOPIXELS
+ #if (NUMBER_OF_NEOPIXELS > 0)
   if ( started == 0 ) {
     colorWipe(strip.Color(0, 255, 0), 50); // Green
     started++;
@@ -245,7 +282,7 @@ void loop()
   //check for activity timeout, then light sleep until the next poll interval
   check_for_inactivity_then_power_down();
   sleep_for_poll_rate();
-  
+
 } //end loop
 
 void callback() {
@@ -273,21 +310,21 @@ void check_for_inactivity_then_power_down()
   {
     digitalWrite(ROLL_LED_PIN, LOW);
     digitalWrite(DICE_LED_PIN, LOW);
-    
+
     long seconds = ( (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY) - millis() ) / 1000;
 
     Serial.printf("Inactive for %ld minutes. Shutting down in %ld seconds.\n", DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY/60000, seconds/1000);
-    
+
     display.fillScreen(BLACK); // erase the whole display
     setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
     display.print("Shutting Down in");
-    
+
     setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 18);
     display.print(seconds);
-    
+
     setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 44);
     display.print("seconds.");
-    
+
     setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 56);
     if(tilt_enabled)
     {
@@ -304,19 +341,19 @@ void check_for_inactivity_then_power_down()
   {
     digitalWrite(ROLL_LED_PIN, LOW);
     digitalWrite(DICE_LED_PIN, LOW);
-    
+
     display.fillScreen(BLACK); // erase the whole display
     setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
     display.print("Shutting Down");
-    
+
     setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
     display.print("Good Bye");
     display.display(); // write to display
     delay(1000);
-    
+
     display.fillScreen(BLACK); // erase the whole display
     display.display(); // write to display
-    
+
     //For this to work, connect D0 and RST pins with a jumper wire.
     Serial.println("Enter deep sleep mode");
     ESP.deepSleep(0, RF_DISABLED);
@@ -326,9 +363,9 @@ void check_for_inactivity_then_power_down()
 void sleep_for_poll_rate()
 {
   //Source: https://www.mischianti.org/2019/11/21/wemos-d1-mini-esp8266-the-three-type-of-sleep-mode-to-manage-energy-savings-part-4/
-  
+
   //Serial.println("Enter light sleep mode");
-  
+
   //light sleep config
   wifi_set_opmode(NULL_MODE);
   wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
@@ -352,8 +389,8 @@ void process_led_state()
   {
     digitalWrite(ROLL_LED_PIN, HIGH);
   }
-  
-  digitalWrite(DICE_LED_PIN, !digitalRead(button_pins[DIE_SELECT_BUTTON]));
+
+  digitalWrite(DICE_LED_PIN, !digitalRead(button_info[DIE_SELECT_BUTTON].pin));
 }
 
 ICACHE_RAM_ATTR void handle_tilt_interrupt()
@@ -396,6 +433,15 @@ void enable_disable_tilt()
   display.display();
 }
 
+int get_random_number(int min, int max)
+{
+  //attempt to fix the RNG
+  //this gives me a different number on sequential boots, and two dice side by side give different numbers
+  randomSeed(ESP.getCycleCount());
+
+  return random(min, max);
+}
+
 void process_roll_request()
 {
   display.fillScreen(BLACK); // erase the whole display
@@ -403,30 +449,29 @@ void process_roll_request()
   display.setTextSize(3);
   int roll;
   int roll2 = 0;
-  
-#ifdef USE_NEOPIXELS
+
+ #if (NUMBER_OF_NEOPIXELS > 0)
   colorWipe(strip.Color(0, 0, 255), 50); // Blue
 #endif
-  
+
   if(die[curDie] != 7)
   {
-    roll = random(1, die[curDie]+1); // store the random number
+    roll = get_random_number(1, die[curDie]+1); // store the random number
   }
-  else 
+  else
   {
-    roll = random(1, die[curDie]); // store the random number
-    roll2 = random(1, die[curDie]);
+    roll = get_random_number(1, die[curDie]); // store the random number
+    roll2 = get_random_number(1, die[curDie]);
   }
-  
-  
-  if (roll < 10) 
+
+  if (roll < 10)
   {
       // single character number
         switch(die[curDie])
         {
           case 2:
           case 4:
-            display.setCursor(57, 29); 
+            display.setCursor(57, 29);
             break;
           case 6:
             draw6(roll);
@@ -437,41 +482,41 @@ void process_roll_request()
           case 8:
           case 10:
           case 12:
-            display.setCursor(57, 32); 
+            display.setCursor(57, 32);
             break;
           case 20:
             display.setCursor(57, 22);
             break;
         }
-      if((die[curDie] != 6) && (die[curDie] != 7)) 
+      if((die[curDie] != 6) && (die[curDie] != 7))
       {
         display.println(roll); // write the roll
       }
       drawDie(); // draw the outline
       drawCurDie();
   }
-  else 
+  else
   {
       // dual character number
         switch(die[curDie])
         {
           case 10:
           case 12:
-            display.setCursor(47, 32); 
+            display.setCursor(47, 32);
             break;
           case 20:
             display.setCursor(47, 22);
             break;
         }
-      
-      display.println(roll); // write the roll 
+
+      display.println(roll); // write the roll
       drawDie(); // draw the outline
       drawCurDie();
   }
-  
+
   display.display(); // write to display
 
-#ifdef USE_NEOPIXELS
+ #if (NUMBER_OF_NEOPIXELS > 0)
   if(die[curDie] != 7)
   {
     if ( roll == 1 ) {
@@ -483,7 +528,7 @@ void process_roll_request()
     else {
       colorWipe(strip.Color(0, 255, 0), 50); // Green
     }
-  }else 
+  }else
   {
     if ( roll + roll2 == 2 ) {
       theaterChase(strip.Color(127,   0,   0), 50); // Red
@@ -509,7 +554,7 @@ void process_die_change_request()
   display.display();
 }
 
-void drawDie() 
+void drawDie()
 {
 
   switch(die[curDie])
@@ -565,9 +610,9 @@ void drawCurDie()
   if(die[curDie] == 2)
   {
     display.print("Coin:");
-  } else 
+  } else
   {
-    display.print("Die:"); 
+    display.print("Die:");
   }
   if( die[curDie] != 7)
   {
@@ -577,7 +622,7 @@ void drawCurDie()
   {
     display.print("6x2");
   }
-  
+
   display.setTextSize(1);
   display.println(" sides");
 } //end drawCurDie
@@ -703,8 +748,8 @@ void display_voltage()
 {
   const float battery_max = 4.20; //maximum voltage of battery
   const float battery_min = 3.0;  //minimum voltage of battery before shutdown
-  
-  while(button_state[DIE_SELECT_BUTTON] == IS_HELD)
+
+  while(button_info[DIE_SELECT_BUTTON].state == IS_HELD)
   {
 #ifdef USE_BATTERY
     float raw = analogRead(BATTERY_MONITOR_PIN);
@@ -714,20 +759,20 @@ void display_voltage()
     float raw = ESP.getVcc();
     float volts = raw / 1000;
 #endif
-    
+
     display.fillScreen(BLACK); // erase the whole display
     setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
     display.print("Battery Voltage:");
-    
+
     setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
     Serial.printf("The internal VCC reads %1.2f volts\n", volts);
     display.printf("%1.2f volts\n", volts);
-    
+
 #ifdef USE_BATTERY
     display.setCursor(0,50);
     display.printf("%1.0f %%\n", percent);
 #endif
-    
+
     display.display(); // write to display
 
     poll_input_signals();
@@ -751,22 +796,22 @@ void process_button_presses()
 {
   for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
   {
-    if(button_state[i] == WAS_RELEASED)
+    if(button_info[i].state == WAS_RELEASED)
     {
         //CLICKED ACTION
 
         //Note: action taken on WAS_RELEASED instead of IS_PRESSED to prevent extra clicks during button holds
 
-        last_interaction_timestamp[i] = millis();
+        button_info[i].last_interaction_timestamp = millis();
 
-        if(last_mode_button_state[i] == NOT_PROCESSED)
+        if(button_info[i].status == NOT_PROCESSED)
         {
             activity_flag = true;
-            
+
             //one action per press / hold for all buttons
             for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
             {
-              last_mode_button_state[j] = PROCESSED;
+              button_info[j].status = PROCESSED;
             }
 
             //button was clicked
@@ -790,22 +835,22 @@ void process_button_presses()
             }
         }
     }
-    else if ( ( button_state[i] == IS_HELD ) &&
-              ( last_interaction_timestamp[i] + BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION < millis() ) )
+    else if ( ( button_info[i].state == IS_HELD ) &&
+              ( button_info[i].last_interaction_timestamp + BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION < millis() ) )
     {
         //HELD ACTION
 
-        last_interaction_timestamp[i] = millis();
+        button_info[i].last_interaction_timestamp = millis();
 
-        if(last_mode_button_state[i] == NOT_PROCESSED)
+        if(button_info[i].status == NOT_PROCESSED)
         {
             activity_flag = true;
-            
+
             //one action per press / hold for all buttons
             for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
             {
-              last_mode_button_state[j] = PROCESSED;
-            }
+              button_info[j].status = PROCESSED;
+            } //TBD, move this to a routine
 
             //button was held
             switch(i)
@@ -828,11 +873,11 @@ void process_button_presses()
             }
         }
     }
-    else if (button_state[i] == IS_NOT_PRESSED)
+    else if (button_info[i].state == IS_NOT_PRESSED)
     {
         //reset timers
-        last_interaction_timestamp[i] = millis();
-        last_mode_button_state[i] = NOT_PROCESSED;
+        button_info[i].last_interaction_timestamp = millis();
+        button_info[i].status = NOT_PROCESSED;
     }
 
   }// end for loop
@@ -842,51 +887,51 @@ void poll_input_signals()
 {
     for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
     {
-        if( button_types[i] == ACTIVE_HIGH )
+        if( (button_info[i].type == ACTIVE_HIGH) || (button_info[i].type == ACTIVE_HIGH_NO_PULLUP) )
         {
             /* read digital active high beam signal */
-            current_button_read[i] = digitalRead(button_pins[i]);
+            button_info[i].current_button_read = digitalRead(button_info[i].pin);
         }
-        else if( button_types[i] == ANALOG_THRESHOLD )
+        else if( button_info[i].type == ANALOG_THRESHOLD )
         {
             /* read analog input, active high */
-            //current_button_read[i] = get_analog_signal_as_bool(i);
+            //button_info[i].current_button_read = get_analog_signal_as_bool(i);
         }
-        else // button_types[i] == ACTIVE_LOW
+        else // button_info[i].type == ACTIVE_LOW
         {
             /* read digital active low button signal */
-            current_button_read[i] = !digitalRead(button_pins[i]);
+            button_info[i].current_button_read = !digitalRead(button_info[i].pin);
         }
-        
-        if (!last_button_read[i] && current_button_read[i])
+
+        if (!button_info[i].last_button_read && button_info[i].current_button_read)
         {
             //button was just pressed
-            button_state[i] = IS_PRESSED;
+            button_info[i].state = IS_PRESSED;
             //Serial.print("Button ");
             //Serial.print(i);
             //Serial.println(" was pressed.");
         }
-        else if  (last_button_read[i] && current_button_read[i])
+        else if  (button_info[i].last_button_read && button_info[i].current_button_read)
         {
-            button_state[i] = IS_HELD;
+            button_info[i].state = IS_HELD;
             //Serial.print("Button ");
             //Serial.print(i);
             //Serial.println(" is held.");
         }
-        else if (last_button_read[i] && !current_button_read[i])
+        else if (button_info[i].last_button_read && !button_info[i].current_button_read)
         {
             //button was just released
-            button_state[i] = WAS_RELEASED;
+            button_info[i].state = WAS_RELEASED;
             //Serial.print("Button ");
             //Serial.print(i);
             //Serial.println(" was released.");
         }
         else
         {
-            button_state[i] = IS_NOT_PRESSED;
+            button_info[i].state = IS_NOT_PRESSED;
         }
 
-        last_button_read[i] = current_button_read[i];
+        button_info[i].last_button_read = button_info[i].current_button_read;
     }
 }
 
@@ -894,7 +939,7 @@ void poll_input_signals()
 //        Neopixel Subroutines         |
 //--------------------------------------
 
-#ifdef USE_NEOPIXELS
+ #if (NUMBER_OF_NEOPIXELS > 0)
 // Fill the dots one after the other with a color
 void colorWipe(uint32_t c, uint8_t wait) {
   for(uint16_t i=0; i<strip.numPixels(); i++) {
