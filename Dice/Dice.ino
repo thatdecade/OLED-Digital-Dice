@@ -23,9 +23,12 @@
  *
  *  Update the logo_bmp with your own image using LCDAssistant
  *
+ *  If you are not using a battery, comment out #define USE_BATTERY
+ *  If you are not using a neopixel strip, comment out #define USE_NEOPIXELS
+ *
  *  Usage:
  *  Press ROLL button to roll dice.
- *  Shake tilt sensors to roll dice.
+ *  Shake upside down to roll dice (tilt sensors).
  *  Hold ROLL button to disable tilt sensors.
  *  Press DICE button to change dice.
  *  Hold DICE button to check battery info.
@@ -37,16 +40,17 @@
 
 /* These are some top level options without touching main code */
 
-//#define USE_BATTERY //comment out to disable
-
-#define NUMBER_OF_NEOPIXELS    0 //set to 0 to disable
-
-#define NUMBER_OF_TILT_SENSORS 2 //set to 0 to disable
-
+// OPTIONS
 #define USE_OLD_PINS //Support older builds, so I don't have to re-wire them
 
+//#define USE_BATTERY //comment out to disable
+
+#define USE_TILT_SENSORS //comment out to disable
+
+#define NUMBER_OF_NEOPIXELS 0 //set to 0 to disable
 #define TYPE_OF_NEOPIXELS (NEO_GRB + NEO_KHZ800)
 
+// TIMING
 #define HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS    100 // 100 = 10 Hz
 
 #define DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY     900000 // 900,000 = 15 * 60 * 1000 = 15 mins
@@ -125,57 +129,73 @@ int die[] = {2, 4, 6, 8, 10, 12, 20, 7};
 //button routines
 typedef enum switch_status { PROCESSED, NOT_PROCESSED, };
 typedef enum switch_state  { IS_NOT_PRESSED, IS_PRESSED, WAS_RELEASED, IS_HELD, };
-typedef enum switch_type   { ACTIVE_HIGH, ACTIVE_LOW, ANALOG_THRESHOLD, ACTIVE_HIGH_NO_PULLUP};
-typedef enum button_link   { /* order of list */ ROLL_BUTTON = 0, DIE_SELECT_BUTTON, TILT_INPUT_1, TILT_INPUT_2, /* keep at end of list */ NUMBER_OF_BUTTONS,  };
+typedef enum input_type    { ACTIVE_HIGH, ACTIVE_LOW, ANALOG_THRESHOLD, ACTIVE_HIGH_NO_PULLUP, };
+typedef enum switch_type   { PUSHBUTTON, TILT_SENSOR, };
+
+enum button_link   
+{ 
+  /* order of button_info list */ 
+  ROLL_BUTTON = 0, 
+  DIE_SELECT_BUTTON, 
+  TILT_INPUT_1, 
+  TILT_INPUT_2, 
+  /* keep at end of list */ 
+  NUMBER_OF_BUTTONS,  
+};
 
 typedef struct
 {
     byte          pin;
-    switch_type   type;
+    input_type    in_type;
     switch_state  state;
     switch_status status;
     long          last_interaction_timestamp;
     byte          last_button_read;
     byte          current_button_read;
+    switch_type   sw_type;
 } button_struct;
 
 button_struct button_info[NUMBER_OF_BUTTONS] =
 {
   {                /* button_info[ROLL_BUTTON] */
     /* pin       = */ ROLL_BUTTON_PIN,
-    /* type      = */ ACTIVE_LOW,
+    /* in_type   = */ ACTIVE_LOW,
     /* state     = */ IS_NOT_PRESSED,
     /* status    = */ NOT_PROCESSED,
     /* timestamp = */ 0,
     /* last      = */ false,
     /* current   = */ false,
+    /* sw_type   = */ PUSHBUTTON,
   },
   {                /* button_info[DIE_SELECT_BUTTON] */
     /* pin       = */ DIE_BUTTON_PIN,
-    /* type      = */ ACTIVE_HIGH_NO_PULLUP,
+    /* in_type   = */ ACTIVE_HIGH_NO_PULLUP,
     /* state     = */ IS_NOT_PRESSED,
     /* status    = */ NOT_PROCESSED,
     /* timestamp = */ 0,
     /* last      = */ false,
     /* current   = */ false,
+    /* sw_type   = */ PUSHBUTTON,
   },
   {                /* button_info[TILT_INPUT_1] */
     /* pin       = */ TILT_SENSOR_1_PIN,
-    /* type      = */ ACTIVE_HIGH,
+    /* in_type   = */ ACTIVE_HIGH,
     /* state     = */ IS_NOT_PRESSED,
     /* status    = */ NOT_PROCESSED,
     /* timestamp = */ 0,
     /* last      = */ false,
     /* current   = */ false,
+    /* sw_type   = */ TILT_SENSOR,
   },
   {                /* button_info[TILT_INPUT_2] */
     /* pin       = */ TILT_SENSOR_2_PIN,
-    /* type      = */ ACTIVE_HIGH,
+    /* in_type   = */ ACTIVE_HIGH,
     /* state     = */ IS_NOT_PRESSED,
     /* status    = */ NOT_PROCESSED,
     /* timestamp = */ 0,
     /* last      = */ false,
     /* current   = */ false,
+    /* sw_type   = */ TILT_SENSOR,
   },
 };
 
@@ -216,7 +236,7 @@ void setup()
   // initialize the button pins as an input:
   for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
   {
-    if(button_info[i].type == ACTIVE_HIGH_NO_PULLUP)
+    if(button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP)
     {
       pinMode(button_info[i].pin, INPUT); //special pin, Active = 3.3V
     }
@@ -224,6 +244,15 @@ void setup()
     {
       pinMode(button_info[i].pin, INPUT_PULLUP);
     }
+    
+#ifdef USE_TILT_SENSORS
+    //start die rollers
+    if(button_info[i].sw_type == TILT_SENSOR)
+    {
+      attachInterrupt(digitalPinToInterrupt(button_info[i].pin), handle_tilt_interrupt, CHANGE);
+    }
+#endif
+
   }
   
 #ifndef USE_BATTERY
@@ -244,10 +273,6 @@ void setup()
   drawCurDie();
   drawDie();
   display.display();
-
-  //start die rollers
-  attachInterrupt(digitalPinToInterrupt(TILT_SENSOR_1_PIN), handle_tilt_interrupt, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(TILT_SENSOR_2_PIN), handle_tilt_interrupt, CHANGE);
 
   WiFi.mode(WIFI_OFF); //We spend most of our time in light sleep with the radio off
 
@@ -272,7 +297,6 @@ void loop()
   //roll the dice when requested
   if (roll_flag || (tilt_flag && tilt_enabled))
   {
-    Serial.println("Interrupt Tilt");
     process_roll_request();
     roll_flag = false;
     tilt_flag = false;
@@ -364,17 +388,16 @@ void sleep_for_poll_rate()
 {
   //Source: https://www.mischianti.org/2019/11/21/wemos-d1-mini-esp8266-the-three-type-of-sleep-mode-to-manage-energy-savings-part-4/
 
-  //Serial.println("Enter light sleep mode");
+  // Enter light sleep mode
 
-  //light sleep config
   wifi_set_opmode(NULL_MODE);
   wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
   wifi_fpm_open();
   wifi_fpm_set_wakeup_cb(callback);
-  wifi_fpm_do_sleep(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS *1000 );
+  wifi_fpm_do_sleep(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS * 1000 );
   delay(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS + 1);
 
-  //Serial.println("Exit light sleep mode");
+  // Exit light sleep mode
 
   wifi_set_sleep_type(NONE_SLEEP_T);
 }
@@ -395,10 +418,12 @@ void process_led_state()
 
 ICACHE_RAM_ATTR void handle_tilt_interrupt()
 {
+  /* This function must be very short */
   tilt_flag = true;
 }
 
 
+#ifdef USE_TILT_SENSORS
 void enable_disable_tilt()
 {
   tilt_enabled = !tilt_enabled;
@@ -432,6 +457,7 @@ void enable_disable_tilt()
   drawDie();
   display.display();
 }
+#endif
 
 int get_random_number(int min, int max)
 {
@@ -776,8 +802,8 @@ void display_voltage()
     display.display(); // write to display
 
     poll_input_signals();
-    ESP.wdtFeed();
-    check_for_inactivity_then_power_down(); //if user holds button too long, turn off
+    ESP.wdtFeed(); //main loop does this without the call
+    check_for_inactivity_then_power_down(); //if user holds button too long, turn off //TBD: This wigs out, when this happens both routines are writing to screen
     sleep_for_poll_rate();
   }
 
@@ -856,7 +882,9 @@ void process_button_presses()
             switch(i)
             {
               case ROLL_BUTTON:
+#ifdef USE_TILT_SENSORS
                 enable_disable_tilt();
+#endif
                 break;
               case TILT_INPUT_1:
               case TILT_INPUT_2:
@@ -887,17 +915,17 @@ void poll_input_signals()
 {
     for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
     {
-        if( (button_info[i].type == ACTIVE_HIGH) || (button_info[i].type == ACTIVE_HIGH_NO_PULLUP) )
+        if( (button_info[i].in_type == ACTIVE_HIGH) || (button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP) )
         {
             /* read digital active high beam signal */
             button_info[i].current_button_read = digitalRead(button_info[i].pin);
         }
-        else if( button_info[i].type == ANALOG_THRESHOLD )
+        else if( button_info[i].in_type == ANALOG_THRESHOLD )
         {
             /* read analog input, active high */
             //button_info[i].current_button_read = get_analog_signal_as_bool(i);
         }
-        else // button_info[i].type == ACTIVE_LOW
+        else // button_info[i].in_type == ACTIVE_LOW
         {
             /* read digital active low button signal */
             button_info[i].current_button_read = !digitalRead(button_info[i].pin);
