@@ -21,7 +21,7 @@ switch_hole_diameter = 12;
 
 usb_opening_width  = 8.5;
 usb_opening_height = 3;
-usb_x_offset_from_center = 7;
+usb_x_offset_from_center = 5.75;
 usb_y_offset_for_pcb_thickness = 1;
 
 usb_board_width  = 23.66+2;
