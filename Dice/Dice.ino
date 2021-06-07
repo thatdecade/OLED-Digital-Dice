@@ -1,39 +1,41 @@
 
 /* Electronic Dice:
- *
- *  Author: Dustin Westaby
- *  Date: June 1, 2021
- *
- *  Sources:
- *   - 2017 Joe Coburn (joecoburn) https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
- *   - 2018 Tomas Carlsson (TomasC62) https://www.instructables.com/Arduino-Oled-Dice/
- *   - 2021 Fernando Hernandez (Dsk001) https://www.prusaprinters.org/prints/66933-electronic-dice
- *   - 2021 Josh Segatto (alienslacker / alieneila) https://twitter.com/alienslacker/status/1398511306546765828
- *
- *  Wiring:
- *  D2(SDA), D1(SCL) to OLED
- *  D0 to RST
- *  D3 to Button (ROLL) to Ground
- *  D4 to Button (DIE) to 3.3V
- *  D5 to Tilt Sensor to Ground
- *  RX to Tilt Sensor to Ground
- *  D6 to Button LED (ROLL) to Ground
- *  D8 to Button LED (DIE) to Ground
- *  D7 to Neo Pixel Data
- *
- *  Update the logo_bmp with your own image using LCDAssistant
- *
- *  If you are not using a battery, comment out #define USE_BATTERY
- *  If you are not using a neopixel strip, comment out #define USE_NEOPIXELS
- *
- *  Usage:
- *  Press ROLL button to roll dice.
- *  Shake upside down to roll dice (tilt sensors).
- *  Hold ROLL button to disable tilt sensors.
- *  Press DICE button to change dice.
- *  Hold DICE button to check battery info.
- *
- */
+
+    Author: Dustin Westaby
+    Date: June 1, 2021
+
+    Sources:
+     - 2017 Joe Coburn (joecoburn) https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
+     - 2018 Tomas Carlsson (TomasC62) https://www.instructables.com/Arduino-Oled-Dice/
+     - 2021 Fernando Hernandez (Dsk001) https://www.prusaprinters.org/prints/66933-electronic-dice
+     - 2021 Josh Segatto (alienslacker / alieneila) https://twitter.com/alienslacker/status/1398511306546765828
+
+    Wiring:
+    D2(SDA), D1(SCL) to OLED
+    D0 to RST
+    D3 to Button (ROLL) to Ground
+    D4 to Button (DIE) to 3.3V
+    D5 to Tilt Sensor to Ground
+    RX to Tilt Sensor to Ground
+    D6 to Button LED (ROLL) to Ground
+    D8 to Button LED (DIE) to Ground
+    D7 to Neo Pixel Data
+
+    Update the logo_bmp with your own image using LCDAssistant
+
+    If you are not using a battery, comment out #define USE_BATTERY
+    If you are not using a neopixel strip, comment out #define USE_NEOPIXELS
+
+    Usage:
+    Press ROLL button to roll dice.
+    Shake upside down to roll dice (tilt sensors).
+    Hold ROLL button to disable tilt sensors.
+    Press DICE button to change dice.
+    Hold DICE button to check battery info.
+    
+    LEDs are connected to D0 so they are forced off during Deep Sleep
+
+*/
 
 
 /* ************************************************* */
@@ -41,11 +43,9 @@
 /* These are some top level options without touching main code */
 
 // OPTIONS
-#define USE_OLD_PINS //Support older builds, so I don't have to re-wire them
+#define USE_BATTERY //comment out to disable
 
-//#define USE_BATTERY //comment out to disable
-
-#define USE_TILT_SENSORS //comment out to disable
+#define NUMBER_OF_TILT_SENSORS 1 //up to 2, set to 0 to disable
 
 #define NUMBER_OF_NEOPIXELS 0 //set to 0 to disable
 #define TYPE_OF_NEOPIXELS (NEO_GRB + NEO_KHZ800)
@@ -71,29 +71,21 @@
 #endif
 
 //Not all pins are interchangable, refer to https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
-#ifndef USE_OLD_PINS 
+
 //These are the new pin outs
 #define DEEP_SLEEP_EXIT_PIN 16 // D0 - Wire to RST
 #define DISPLAY_SCL_PIN      5 // D1 - I2C
 #define DISPLAY_SDA_PIN      4 // D2 - I2C
 #define ROLL_BUTTON_PIN      0 // D3 - Active Low Input
-#define DIE_BUTTON_PIN       2 // D4 - Active High Input
+#define DIE_BUTTON_PIN      15 // D8 - Active High Input
 #define TILT_SENSOR_1_PIN   14 // D5 - Active High Interrupt
-#define ROLL_LED_PIN        12 // D6 - Active High Output
 #define NEOPIXEL_DATA_PIN   13 // D7 - Data Output
-#define DICE_LED_PIN        15 // D8 - Active High Output
 #define TILT_SENSOR_2_PIN    3 // RX - Active High Interrupt
 #define BATTERY_MONITOR_PIN A0 // A0 - Analog Input
-#else 
-//these are the old pins outs
-#define ROLL_BUTTON_PIN      0
-#define DIE_BUTTON_PIN      15
-#define TILT_SENSOR_1_PIN   14
-#define TILT_SENSOR_2_PIN   13
-#define ROLL_LED_PIN        12
-#define DICE_LED_PIN        16
-#define BATTERY_MONITOR_PIN A0 // A0 - Analog Input
-#endif
+
+//not used
+#define ROLL_LED_PIN        16 // D0 - Active High Output
+#define DICE_LED_PIN        16 // D0 - Active High Output
 
 //screen config
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -132,32 +124,36 @@ typedef enum switch_state  { IS_NOT_PRESSED, IS_PRESSED, WAS_RELEASED, IS_HELD, 
 typedef enum input_type    { ACTIVE_HIGH, ACTIVE_LOW, ANALOG_THRESHOLD, ACTIVE_HIGH_NO_PULLUP, };
 typedef enum switch_type   { PUSHBUTTON, TILT_SENSOR, };
 
-enum button_link   
-{ 
-  /* order of button_info list */ 
-  ROLL_BUTTON = 0, 
-  DIE_SELECT_BUTTON, 
-  TILT_INPUT_1, 
-  TILT_INPUT_2, 
-  /* keep at end of list */ 
-  NUMBER_OF_BUTTONS,  
+enum button_link
+{
+  /* order of button_info list */
+  ROLL_BUTTON = 0,
+  DIE_SELECT_BUTTON,
+#if NUMBER_OF_TILT_SENSORS > 0
+  TILT_INPUT_1,
+#endif
+#if NUMBER_OF_TILT_SENSORS > 1
+  TILT_INPUT_2,
+#endif
+  /* keep at end of list */
+  NUMBER_OF_BUTTONS,
 };
 
 typedef struct
 {
-    byte          pin;
-    input_type    in_type;
-    switch_state  state;
-    switch_status status;
-    long          last_interaction_timestamp;
-    byte          last_button_read;
-    byte          current_button_read;
-    switch_type   sw_type;
+  byte          pin;
+  input_type    in_type;
+  switch_state  state;
+  switch_status status;
+  long          last_interaction_timestamp;
+  byte          last_button_read;
+  byte          current_button_read;
+  switch_type   sw_type;
 } button_struct;
 
 button_struct button_info[NUMBER_OF_BUTTONS] =
 {
-  {                /* button_info[ROLL_BUTTON] */
+  { /* button_info[ROLL_BUTTON] */
     /* pin       = */ ROLL_BUTTON_PIN,
     /* in_type   = */ ACTIVE_LOW,
     /* state     = */ IS_NOT_PRESSED,
@@ -167,7 +163,7 @@ button_struct button_info[NUMBER_OF_BUTTONS] =
     /* current   = */ false,
     /* sw_type   = */ PUSHBUTTON,
   },
-  {                /* button_info[DIE_SELECT_BUTTON] */
+  { /* button_info[DIE_SELECT_BUTTON] */
     /* pin       = */ DIE_BUTTON_PIN,
     /* in_type   = */ ACTIVE_HIGH_NO_PULLUP,
     /* state     = */ IS_NOT_PRESSED,
@@ -177,7 +173,8 @@ button_struct button_info[NUMBER_OF_BUTTONS] =
     /* current   = */ false,
     /* sw_type   = */ PUSHBUTTON,
   },
-  {                /* button_info[TILT_INPUT_1] */
+#if NUMBER_OF_TILT_SENSORS > 0
+  { /* button_info[TILT_INPUT_1] */
     /* pin       = */ TILT_SENSOR_1_PIN,
     /* in_type   = */ ACTIVE_HIGH,
     /* state     = */ IS_NOT_PRESSED,
@@ -187,16 +184,19 @@ button_struct button_info[NUMBER_OF_BUTTONS] =
     /* current   = */ false,
     /* sw_type   = */ TILT_SENSOR,
   },
+#endif
+#if NUMBER_OF_TILT_SENSORS > 1
   {                /* button_info[TILT_INPUT_2] */
-    /* pin       = */ TILT_SENSOR_2_PIN,
-    /* in_type   = */ ACTIVE_HIGH,
-    /* state     = */ IS_NOT_PRESSED,
-    /* status    = */ NOT_PROCESSED,
-    /* timestamp = */ 0,
-    /* last      = */ false,
-    /* current   = */ false,
-    /* sw_type   = */ TILT_SENSOR,
+  /* pin       = */ TILT_SENSOR_2_PIN,
+  /* in_type   = */ ACTIVE_HIGH,
+  /* state     = */ IS_NOT_PRESSED,
+  /* status    = *//NOT_PROCESSED,
+  /* timestamp = */ 0,
+  /* last      = */ false,
+  /* current   = */ false,
+  /* sw_type   = */ TILT_SENSOR,
   },
+#endif
 };
 
 /* ***************** */
@@ -216,7 +216,7 @@ void setup()
   //setup output to serial monitor
   Serial.begin(115200);
 
- #if (NUMBER_OF_NEOPIXELS > 0)
+#if (NUMBER_OF_NEOPIXELS > 0)
   strip.begin();
   strip.setBrightness(50);
   strip.show(); // Initialize all pixels to 'off'
@@ -225,18 +225,18 @@ void setup()
   Serial.println(F("Digital Dice v1.0"));
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("Display driver failed"));
-    for(;;); // Don't proceed, loop forever
+    for (;;); // Don't proceed, loop forever
   }
 
   // Clear the display buffer
   display.clearDisplay();
 
   // initialize the button pins as an input:
-  for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
+  for (byte i = 0; i < NUMBER_OF_BUTTONS; i++)
   {
-    if(button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP)
+    if (button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP)
     {
       pinMode(button_info[i].pin, INPUT); //special pin, Active = 3.3V
     }
@@ -244,17 +244,17 @@ void setup()
     {
       pinMode(button_info[i].pin, INPUT_PULLUP);
     }
-    
-#ifdef USE_TILT_SENSORS
+
+#if NUMBER_OF_TILT_SENSORS > 0
     //start die rollers
-    if(button_info[i].sw_type == TILT_SENSOR)
+    if (button_info[i].sw_type == TILT_SENSOR)
     {
       attachInterrupt(digitalPinToInterrupt(button_info[i].pin), handle_tilt_interrupt, CHANGE);
     }
 #endif
 
   }
-  
+
 #ifndef USE_BATTERY
   pinMode(BATTERY_MONITOR_PIN, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield. See https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
 #endif
@@ -282,7 +282,7 @@ void setup()
 void loop()
 {
 
- #if (NUMBER_OF_NEOPIXELS > 0)
+#if (NUMBER_OF_NEOPIXELS > 0)
   if ( started == 0 ) {
     colorWipe(strip.Color(0, 255, 0), 50); // Green
     started++;
@@ -305,7 +305,8 @@ void loop()
   //power savings
   //check for activity timeout, then light sleep until the next poll interval
   check_for_inactivity_then_power_down();
-  sleep_for_poll_rate();
+  check_for_low_battery_then_power_down();
+  sleep_for_poll_rate(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS);
 
 } //end loop
 
@@ -315,9 +316,21 @@ void callback() {
 
 void setup_text_to_display(int text_color, int text_size, int cursor_x, int cursor_y)
 {
-    display.setTextColor(text_color);
-    display.setTextSize(text_size);
-    display.setCursor(cursor_x,cursor_y);
+  display.setTextColor(text_color);
+  display.setTextSize(text_size);
+  display.setCursor(cursor_x, cursor_y);
+}
+
+void check_for_low_battery_then_power_down()
+{
+  static long shutdown_timer;
+  
+#ifdef USE_BATTERY
+  float percent = get_battery_percent();
+#endif
+
+//TBD
+
 }
 
 void check_for_inactivity_then_power_down()
@@ -330,61 +343,70 @@ void check_for_inactivity_then_power_down()
     last_activity = millis();
   }
 
-  if(millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY - 10000))
+  if (millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY - 10000))
   {
     digitalWrite(ROLL_LED_PIN, LOW);
     digitalWrite(DICE_LED_PIN, LOW);
 
     long seconds = ( (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY) - millis() ) / 1000;
-
-    Serial.printf("Inactive for %ld minutes. Shutting down in %ld seconds.\n", DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY/60000, seconds/1000);
-
-    display.fillScreen(BLACK); // erase the whole display
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
-    display.print("Shutting Down in");
-
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 18);
-    display.print(seconds);
-
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 44);
-    display.print("seconds.");
-
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 56);
-    if(tilt_enabled)
-    {
-      display.print("Shake dice to stop.");
-    }
-    else
-    {
-      display.print("Press any button to stop.");
-    }
-    display.display(); // write to display
+    shutdown_message(seconds);
   }
 
-  if(millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY))
+  if (millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY))
   {
-    digitalWrite(ROLL_LED_PIN, LOW);
-    digitalWrite(DICE_LED_PIN, LOW);
-
-    display.fillScreen(BLACK); // erase the whole display
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
-    display.print("Shutting Down");
-
-    setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
-    display.print("Good Bye");
-    display.display(); // write to display
-    delay(1000);
-
-    display.fillScreen(BLACK); // erase the whole display
-    display.display(); // write to display
-
-    //For this to work, connect D0 and RST pins with a jumper wire.
-    Serial.println("Enter deep sleep mode");
-    ESP.deepSleep(0, RF_DISABLED);
+    turn_off_oled_and_deep_sleep();
   }
 }
 
-void sleep_for_poll_rate()
+void shutdown_message(long seconds)
+{
+  Serial.printf("Inactive for %ld minutes. Shutting down in %ld seconds.\n", DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY / 60000, seconds / 1000);
+
+  display.fillScreen(BLACK); // erase the whole display
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
+  display.print("Shutting Down in");
+
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 18);
+  display.print(seconds);
+
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 44);
+  display.print("seconds.");
+
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 56);
+  if (tilt_enabled)
+  {
+    display.print("Shake dice to stop.");
+  }
+  else
+  {
+    display.print("Press any button to stop.");
+  }
+  display.display(); // write to display
+}
+
+void turn_off_oled_and_deep_sleep()
+{
+  digitalWrite(ROLL_LED_PIN, LOW);
+  digitalWrite(DICE_LED_PIN, LOW);
+
+  display.fillScreen(BLACK); // erase the whole display
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
+  display.print("Shutting Down");
+
+  setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 0, /* y = */ 24);
+  display.print("Good Bye");
+  display.display(); // write to display
+  delay(1000);
+
+  display.fillScreen(BLACK); // erase the whole display
+  display.display(); // write to display
+
+  //For this to work, connect D0 and RST pins with a jumper wire.
+  Serial.println("Enter deep sleep mode");
+  ESP.deepSleep(0, RF_DISABLED);
+}
+
+void sleep_for_poll_rate(long rate)
 {
   //Source: https://www.mischianti.org/2019/11/21/wemos-d1-mini-esp8266-the-three-type-of-sleep-mode-to-manage-energy-savings-part-4/
 
@@ -394,8 +416,8 @@ void sleep_for_poll_rate()
   wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
   wifi_fpm_open();
   wifi_fpm_set_wakeup_cb(callback);
-  wifi_fpm_do_sleep(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS * 1000 );
-  delay(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS + 1);
+  wifi_fpm_do_sleep(rate * 1000 );
+  delay(rate + 1);
 
   // Exit light sleep mode
 
@@ -416,14 +438,15 @@ void process_led_state()
   digitalWrite(DICE_LED_PIN, !digitalRead(button_info[DIE_SELECT_BUTTON].pin));
 }
 
+#if NUMBER_OF_TILT_SENSORS > 0
 ICACHE_RAM_ATTR void handle_tilt_interrupt()
 {
   /* This function must be very short */
   tilt_flag = true;
 }
+#endif
 
-
-#ifdef USE_TILT_SENSORS
+#if NUMBER_OF_TILT_SENSORS > 0
 void enable_disable_tilt()
 {
   tilt_enabled = !tilt_enabled;
@@ -431,13 +454,13 @@ void enable_disable_tilt()
   setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
   display.print("Motion Roll");
   setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 12);
-  if(tilt_enabled)
+  if (tilt_enabled)
   {
     Serial.println("Tilt Enabled");
     display.print("Enabled");
     display.display(); // write to display
     delay(1000);
-    display.setCursor(0,24);
+    display.setCursor(0, 24);
     display.print("Shake upside down to roll");
     display.display(); // write to display
   }
@@ -447,7 +470,7 @@ void enable_disable_tilt()
     display.print("Disabled");
     display.display(); // write to display
     delay(1000);
-    display.setCursor(0,24);
+    display.setCursor(0, 24);
     display.print("Press button to roll");
     display.display(); // write to display
   }
@@ -476,13 +499,13 @@ void process_roll_request()
   int roll;
   int roll2 = 0;
 
- #if (NUMBER_OF_NEOPIXELS > 0)
+#if (NUMBER_OF_NEOPIXELS > 0)
   colorWipe(strip.Color(0, 0, 255), 50); // Blue
 #endif
 
-  if(die[curDie] != 7)
+  if (die[curDie] != 7)
   {
-    roll = get_random_number(1, die[curDie]+1); // store the random number
+    roll = get_random_number(1, die[curDie] + 1); // store the random number
   }
   else
   {
@@ -492,58 +515,58 @@ void process_roll_request()
 
   if (roll < 10)
   {
-      // single character number
-        switch(die[curDie])
-        {
-          case 2:
-          case 4:
-            display.setCursor(57, 29);
-            break;
-          case 6:
-            draw6(roll);
-            break;
-          case 7:
-            draw7(roll, roll2);
-            break;
-          case 8:
-          case 10:
-          case 12:
-            display.setCursor(57, 32);
-            break;
-          case 20:
-            display.setCursor(57, 22);
-            break;
-        }
-      if((die[curDie] != 6) && (die[curDie] != 7))
-      {
-        display.println(roll); // write the roll
-      }
-      drawDie(); // draw the outline
-      drawCurDie();
+    // single character number
+    switch (die[curDie])
+    {
+      case 2:
+      case 4:
+        display.setCursor(57, 29);
+        break;
+      case 6:
+        draw6(roll);
+        break;
+      case 7:
+        draw7(roll, roll2);
+        break;
+      case 8:
+      case 10:
+      case 12:
+        display.setCursor(57, 32);
+        break;
+      case 20:
+        display.setCursor(57, 22);
+        break;
+    }
+    if ((die[curDie] != 6) && (die[curDie] != 7))
+    {
+      display.println(roll); // write the roll
+    }
+    drawDie(); // draw the outline
+    drawCurDie();
   }
   else
   {
-      // dual character number
-        switch(die[curDie])
-        {
-          case 10:
-          case 12:
-            display.setCursor(47, 32);
-            break;
-          case 20:
-            display.setCursor(47, 22);
-            break;
-        }
+    // dual character number
+    switch (die[curDie])
+    {
+      case 10:
+      case 12:
+        display.setCursor(47, 32);
+        break;
+      case 20:
+        display.setCursor(47, 22);
+        break;
+    }
 
-      display.println(roll); // write the roll
-      drawDie(); // draw the outline
-      drawCurDie();
+    display.println(roll); // write the roll
+    drawDie(); // draw the outline
+    drawCurDie();
   }
 
   display.display(); // write to display
 
- #if (NUMBER_OF_NEOPIXELS > 0)
-  if(die[curDie] != 7)
+#if (NUMBER_OF_NEOPIXELS > 0)
+  if (die[curDie] != 7)
   {
     if ( roll == 1 ) {
       theaterChase(strip.Color(127,   0,   0), 50); // Red
@@ -554,7 +577,7 @@ void process_roll_request()
     else {
       colorWipe(strip.Color(0, 255, 0), 50); // Green
     }
-  }else
+  } else
   {
     if ( roll + roll2 == 2 ) {
       theaterChase(strip.Color(127,   0,   0), 50); // Red
@@ -572,7 +595,7 @@ void process_die_change_request()
   curDie++;
   if (curDie > 7)
   {
-    curDie=0;
+    curDie = 0;
   }
   display.fillScreen(BLACK);
   drawCurDie();
@@ -583,10 +606,10 @@ void process_die_change_request()
 void drawDie()
 {
 
-  switch(die[curDie])
+  switch (die[curDie])
   {
     case 2:
-      display.drawCircle(SCREEN_WIDTH/2, 40, 23, SSD1306_WHITE);
+      display.drawCircle(SCREEN_WIDTH / 2, 40, 23, SSD1306_WHITE);
       break;
     case 4:
       display.drawTriangle(40, 63, 88, 63, 64, 16, SSD1306_WHITE);
@@ -627,20 +650,20 @@ void drawDie()
       break;
   }
 
-    // display.drawLine(x1, y1, x2, y2, SSD1306_WHITE);
+  // display.drawLine(x1, y1, x2, y2, SSD1306_WHITE);
 } //end drawDie
 
 void drawCurDie()
 {
   setup_text_to_display(/* color = */ WHITE, /* size = */ 2, /* x = */ 2, /* y = */ 0);
-  if(die[curDie] == 2)
+  if (die[curDie] == 2)
   {
     display.print("Coin:");
   } else
   {
     display.print("Die:");
   }
-  if( die[curDie] != 7)
+  if ( die[curDie] != 7)
   {
     display.print(die[curDie]);
   }
@@ -655,137 +678,153 @@ void drawCurDie()
 
 void draw6(int roll)
 {
-  switch(roll)
+  switch (roll)
   {
     case 1:
       display.fillCircle(display.width() / 2, 40, 5, SSD1306_WHITE);
       break;
     case 2:
-      display.fillCircle(display.width() / 2-15, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 25, 5, SSD1306_WHITE);
       break;
     case 3:
       display.fillCircle(display.width() / 2, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 25, 5, SSD1306_WHITE);
       break;
     case 4:
-      display.fillCircle(display.width() / 2-15, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 55, 5, SSD1306_WHITE);
       break;
     case 5:
       display.fillCircle(display.width() / 2, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 55, 5, SSD1306_WHITE);
       break;
     case 6:
-      display.fillCircle(display.width() / 2-15, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15, 55, 5, SSD1306_WHITE);
       break;
   }//end roll
 }// end of draw6
 
 void draw7(int roll, int roll2)
 {
-  switch(roll)
+  switch (roll)
   {
     case 1:
-      display.fillCircle(display.width() / 2-30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 30, 40, 5, SSD1306_WHITE);
       break;
     case 2:
-      display.fillCircle(display.width() / 2-15-30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 25, 5, SSD1306_WHITE);
       break;
     case 3:
-      display.fillCircle(display.width() / 2-30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 25, 5, SSD1306_WHITE);
       break;
     case 4:
-      display.fillCircle(display.width() / 2-15-30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 55, 5, SSD1306_WHITE);
       break;
     case 5:
-      display.fillCircle(display.width() / 2-30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 55, 5, SSD1306_WHITE);
       break;
     case 6:
-      display.fillCircle(display.width() / 2-15-30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15-30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15-30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 - 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 - 30, 55, 5, SSD1306_WHITE);
       break;
   }//end roll
 
-    switch(roll2)
-    {
+  switch (roll2)
+  {
     case 1:
-      display.fillCircle(display.width() / 2+30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 30, 40, 5, SSD1306_WHITE);
       break;
     case 2:
-      display.fillCircle(display.width() / 2-15+30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 25, 5, SSD1306_WHITE);
       break;
     case 3:
-      display.fillCircle(display.width() / 2+30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 25, 5, SSD1306_WHITE);
       break;
     case 4:
-      display.fillCircle(display.width() / 2-15+30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 55, 5, SSD1306_WHITE);
       break;
     case 5:
-      display.fillCircle(display.width() / 2+30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 55, 5, SSD1306_WHITE);
       break;
     case 6:
-      display.fillCircle(display.width() / 2-15+30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 40, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 55, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2-15+30, 25, 5, SSD1306_WHITE);
-      display.fillCircle(display.width() / 2+15+30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 40, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 55, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 - 15 + 30, 25, 5, SSD1306_WHITE);
+      display.fillCircle(display.width() / 2 + 15 + 30, 55, 5, SSD1306_WHITE);
       break;
   }//end roll
 }// end draw7
 
-void display_voltage()
+float get_battery_voltage()
+{
+#ifdef USE_BATTERY
+  float raw = analogRead(BATTERY_MONITOR_PIN);
+  float volts = raw / 1023 * 4.5;
+#else
+  float raw = ESP.getVcc();
+  float volts = raw / 1000;
+#endif
+
+  return volts;
+}
+
+#ifdef USE_BATTERY
+float get_battery_percent()
 {
   const float battery_max = 4.20; //maximum voltage of battery
   const float battery_min = 3.0;  //minimum voltage of battery before shutdown
+  float volts = get_battery_voltage();
 
-  while(button_info[DIE_SELECT_BUTTON].state == IS_HELD)
-  {
-#ifdef USE_BATTERY
-    float raw = analogRead(BATTERY_MONITOR_PIN);
-    float volts = raw / 1023 * 4.5;
-    float percent = ((volts - battery_min) / (battery_max - battery_min)) * 100;
-#else
-    float raw = ESP.getVcc();
-    float volts = raw / 1000;
+  return ((volts - battery_min) / (battery_max - battery_min)) * 100;
+}
 #endif
 
+void display_voltage()
+{
+  while (button_info[DIE_SELECT_BUTTON].state == IS_HELD)
+  {
+    float volts = get_battery_voltage();
+#ifdef USE_BATTERY
+    float percent = get_battery_percent();
+#endif
     display.fillScreen(BLACK); // erase the whole display
     setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
     display.print("Battery Voltage:");
@@ -795,7 +834,7 @@ void display_voltage()
     display.printf("%1.2f volts\n", volts);
 
 #ifdef USE_BATTERY
-    display.setCursor(0,50);
+    display.setCursor(0, 50);
     display.printf("%1.0f %%\n", percent);
 #endif
 
@@ -804,7 +843,7 @@ void display_voltage()
     poll_input_signals();
     ESP.wdtFeed(); //main loop does this without the call
     check_for_inactivity_then_power_down(); //if user holds button too long, turn off //TBD: This wigs out, when this happens both routines are writing to screen
-    sleep_for_poll_rate();
+    sleep_for_poll_rate(1000);
   }
 
   //go back to main screen
@@ -820,92 +859,100 @@ void display_voltage()
 
 void process_button_presses()
 {
-  for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
+  for (byte i = 0; i < NUMBER_OF_BUTTONS; i++)
   {
-    if(button_info[i].state == WAS_RELEASED)
+    if (button_info[i].state == WAS_RELEASED)
     {
-        //CLICKED ACTION
+      //CLICKED ACTION
 
-        //Note: action taken on WAS_RELEASED instead of IS_PRESSED to prevent extra clicks during button holds
+      //Note: action taken on WAS_RELEASED instead of IS_PRESSED to prevent extra clicks during button holds
 
-        button_info[i].last_interaction_timestamp = millis();
+      button_info[i].last_interaction_timestamp = millis();
 
-        if(button_info[i].status == NOT_PROCESSED)
+      if (button_info[i].status == NOT_PROCESSED)
+      {
+        activity_flag = true;
+
+        //one action per press / hold for all buttons
+        for (byte j = 0; j < NUMBER_OF_BUTTONS; j++)
         {
-            activity_flag = true;
-
-            //one action per press / hold for all buttons
-            for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
-            {
-              button_info[j].status = PROCESSED;
-            }
-
-            //button was clicked
-            switch(i)
-            {
-              case TILT_INPUT_1:
-              case TILT_INPUT_2:
-                Serial.println("Tilt");
-                tilt_flag = true;
-                break;
-              case ROLL_BUTTON:
-                roll_flag = true;
-                break;
-              case DIE_SELECT_BUTTON:
-                process_die_change_request();
-                break;
-              default:
-                Serial.print("Unknown button press: ");
-                Serial.println(i);
-                break;
-            }
+          button_info[j].status = PROCESSED;
         }
+
+        //button was clicked
+        switch (i)
+        {
+#if NUMBER_OF_TILT_SENSORS > 0
+          case TILT_INPUT_1:
+#endif
+#if NUMBER_OF_TILT_SENSORS > 1
+          case TILT_INPUT_2:
+#endif
+            Serial.println("Tilt");
+            tilt_flag = true;
+            break;
+          case ROLL_BUTTON:
+            roll_flag = true;
+            break;
+          case DIE_SELECT_BUTTON:
+            process_die_change_request();
+            break;
+          default:
+            Serial.print("Unknown button press: ");
+            Serial.println(i);
+            break;
+        }
+      }
     }
     else if ( ( button_info[i].state == IS_HELD ) &&
               ( button_info[i].last_interaction_timestamp + BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION < millis() ) )
     {
-        //HELD ACTION
+      //HELD ACTION
 
-        button_info[i].last_interaction_timestamp = millis();
+      button_info[i].last_interaction_timestamp = millis();
 
-        if(button_info[i].status == NOT_PROCESSED)
+      if (button_info[i].status == NOT_PROCESSED)
+      {
+        activity_flag = true;
+
+        //one action per press / hold for all buttons
+        for (byte j = 0; j < NUMBER_OF_BUTTONS; j++)
         {
-            activity_flag = true;
+          button_info[j].status = PROCESSED;
+        } //TBD, move this to a routine
 
-            //one action per press / hold for all buttons
-            for(byte j=0; j < NUMBER_OF_BUTTONS; j++)
-            {
-              button_info[j].status = PROCESSED;
-            } //TBD, move this to a routine
-
-            //button was held
-            switch(i)
-            {
-              case ROLL_BUTTON:
-#ifdef USE_TILT_SENSORS
-                enable_disable_tilt();
+        //button was held
+        switch (i)
+        {
+          case ROLL_BUTTON:
+#if NUMBER_OF_TILT_SENSORS > 0
+            enable_disable_tilt();
 #endif
-                break;
-              case TILT_INPUT_1:
-              case TILT_INPUT_2:
-                //TBD
-                break;
-              case DIE_SELECT_BUTTON:
-                //show battery voltage
-                display_voltage();
-                break;
-              default:
-                Serial.print("Unknown button press: ");
-                Serial.println(i);
-                break;
-            }
+            break;
+#if NUMBER_OF_TILT_SENSORS > 0
+          case TILT_INPUT_1:
+#endif
+#if NUMBER_OF_TILT_SENSORS > 1
+          case TILT_INPUT_2:
+#endif
+            //TBD
+            break;
+          case DIE_SELECT_BUTTON:
+            //show battery voltage
+            display_voltage();
+            break;
+          default:
+            Serial.print("Unknown button press: ");
+            Serial.println(i);
+            break;
         }
+      }
     }
     else if (button_info[i].state == IS_NOT_PRESSED)
     {
-        //reset timers
-        button_info[i].last_interaction_timestamp = millis();
-        button_info[i].status = NOT_PROCESSED;
+      //reset timers
+      button_info[i].last_interaction_timestamp = millis();
+      button_info[i].status = NOT_PROCESSED;
     }
 
   }// end for loop
@@ -913,67 +960,67 @@ void process_button_presses()
 
 void poll_input_signals()
 {
-    for(byte i=0; i < NUMBER_OF_BUTTONS; i++)
+  for (byte i = 0; i < NUMBER_OF_BUTTONS; i++)
+  {
+    if ( (button_info[i].in_type == ACTIVE_HIGH) || (button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP) )
     {
-        if( (button_info[i].in_type == ACTIVE_HIGH) || (button_info[i].in_type == ACTIVE_HIGH_NO_PULLUP) )
-        {
-            /* read digital active high beam signal */
-            button_info[i].current_button_read = digitalRead(button_info[i].pin);
-        }
-        else if( button_info[i].in_type == ANALOG_THRESHOLD )
-        {
-            /* read analog input, active high */
-            //button_info[i].current_button_read = get_analog_signal_as_bool(i);
-        }
-        else // button_info[i].in_type == ACTIVE_LOW
-        {
-            /* read digital active low button signal */
-            button_info[i].current_button_read = !digitalRead(button_info[i].pin);
-        }
-
-        if (!button_info[i].last_button_read && button_info[i].current_button_read)
-        {
-            //button was just pressed
-            button_info[i].state = IS_PRESSED;
-            //Serial.print("Button ");
-            //Serial.print(i);
-            //Serial.println(" was pressed.");
-        }
-        else if  (button_info[i].last_button_read && button_info[i].current_button_read)
-        {
-            button_info[i].state = IS_HELD;
-            //Serial.print("Button ");
-            //Serial.print(i);
-            //Serial.println(" is held.");
-        }
-        else if (button_info[i].last_button_read && !button_info[i].current_button_read)
-        {
-            //button was just released
-            button_info[i].state = WAS_RELEASED;
-            //Serial.print("Button ");
-            //Serial.print(i);
-            //Serial.println(" was released.");
-        }
-        else
-        {
-            button_info[i].state = IS_NOT_PRESSED;
-        }
-
-        button_info[i].last_button_read = button_info[i].current_button_read;
+      /* read digital active high beam signal */
+      button_info[i].current_button_read = digitalRead(button_info[i].pin);
     }
+    else if ( button_info[i].in_type == ANALOG_THRESHOLD )
+    {
+      /* read analog input, active high */
+      //button_info[i].current_button_read = get_analog_signal_as_bool(i);
+    }
+    else // button_info[i].in_type == ACTIVE_LOW
+    {
+      /* read digital active low button signal */
+      button_info[i].current_button_read = !digitalRead(button_info[i].pin);
+    }
+
+    if (!button_info[i].last_button_read && button_info[i].current_button_read)
+    {
+      //button was just pressed
+      button_info[i].state = IS_PRESSED;
+      //Serial.print("Button ");
+      //Serial.print(i);
+      //Serial.println(" was pressed.");
+    }
+    else if  (button_info[i].last_button_read && button_info[i].current_button_read)
+    {
+      button_info[i].state = IS_HELD;
+      //Serial.print("Button ");
+      //Serial.print(i);
+      //Serial.println(" is held.");
+    }
+    else if (button_info[i].last_button_read && !button_info[i].current_button_read)
+    {
+      //button was just released
+      button_info[i].state = WAS_RELEASED;
+      //Serial.print("Button ");
+      //Serial.print(i);
+      //Serial.println(" was released.");
+    }
+    else
+    {
+      button_info[i].state = IS_NOT_PRESSED;
+    }
+
+    button_info[i].last_button_read = button_info[i].current_button_read;
+  }
 }
 
 //--------------------------------------
 //        Neopixel Subroutines         |
 //--------------------------------------
 
- #if (NUMBER_OF_NEOPIXELS > 0)
+#if (NUMBER_OF_NEOPIXELS > 0)
 // Fill the dots one after the other with a color
 void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, c);
-      strip.show();
-      delay(wait);
+  for (uint16_t i = 0; i < strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait);
   }
 }
 
@@ -981,8 +1028,8 @@ void colorWipe(uint32_t c, uint8_t wait) {
 void rainbowCycle(uint8_t wait) {
   uint16_t i, j;
 
-  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) {
+  for (j = 0; j < 256 * 5; j++) { // 5 cycles of all colors on wheel
+    for (i = 0; i < strip.numPixels(); i++) {
       strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
     }
     strip.show();
@@ -992,17 +1039,17 @@ void rainbowCycle(uint8_t wait) {
 
 //Theatre-style crawling lights.
 void theaterChase(uint32_t c, uint8_t wait) {
-  for (int j=0; j<10; j++) {  //do 10 cycles of chasing
-    for (int q=0; q < 3; q++) {
-      for (int i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, c);    //turn every third pixel on
+  for (int j = 0; j < 10; j++) { //do 10 cycles of chasing
+    for (int q = 0; q < 3; q++) {
+      for (int i = 0; i < strip.numPixels(); i = i + 3) {
+        strip.setPixelColor(i + q, c);  //turn every third pixel on
       }
       strip.show();
 
       delay(wait);
 
-      for (int i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, 0);        //turn every third pixel off
+      for (int i = 0; i < strip.numPixels(); i = i + 3) {
+        strip.setPixelColor(i + q, 0);      //turn every third pixel off
       }
     }
   }
@@ -1011,14 +1058,14 @@ void theaterChase(uint32_t c, uint8_t wait) {
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
 uint32_t Wheel(byte WheelPos) {
-  if(WheelPos < 85) {
-   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
-  } else if(WheelPos < 170) {
-   WheelPos -= 85;
-   return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  if (WheelPos < 85) {
+    return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+  } else if (WheelPos < 170) {
+    WheelPos -= 85;
+    return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
   } else {
-   WheelPos -= 170;
-   return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+    WheelPos -= 170;
+    return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
   }
 }
 #endif
