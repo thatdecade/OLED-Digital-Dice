@@ -57,6 +57,8 @@
 
 #define BUTTON_HOLD_DELAY_IN_MILLIS_UNTIL_HELD_ACTION     2000 // 2 seconds
 
+#define RESERVE_POWER_PERCENT_FOR_SELF_SHUTDOWN 25 //percent
+
 /* ************************************************* */
 
 #include "Arduino.h"
@@ -323,14 +325,24 @@ void setup_text_to_display(int text_color, int text_size, int cursor_x, int curs
 
 void check_for_low_battery_then_power_down()
 {
-  static long shutdown_timer;
-  
 #ifdef USE_BATTERY
+  static byte shutdown_timer = 10;
+  
   float percent = get_battery_percent();
+
+  if (percent < RESERVE_POWER_PERCENT_FOR_SELF_SHUTDOWN)
+  {
+    if (shutdown_timer > 0)
+    {
+      display_voltage();
+    }
+    else
+    {
+      turn_off_oled_and_deep_sleep();
+    }
+    shutdown_timer--;
+  }
 #endif
-
-//TBD
-
 }
 
 void check_for_inactivity_then_power_down()
@@ -819,7 +831,7 @@ float get_battery_percent()
 
 void display_voltage()
 {
-  while (button_info[DIE_SELECT_BUTTON].state == IS_HELD)
+  do
   {
     float volts = get_battery_voltage();
 #ifdef USE_BATTERY
@@ -840,11 +852,15 @@ void display_voltage()
 
     display.display(); // write to display
 
-    poll_input_signals();
-    ESP.wdtFeed(); //main loop does this without the call
-    check_for_inactivity_then_power_down(); //if user holds button too long, turn off //TBD: This wigs out, when this happens both routines are writing to screen
-    sleep_for_poll_rate(1000);
-  }
+    //if we are here because of a held button, monitor the buttons and maintain loop timers
+    if (button_info[DIE_SELECT_BUTTON].state == IS_HELD)
+    {
+        poll_input_signals();
+        ESP.wdtFeed(); //main loop does this without the call
+        check_for_inactivity_then_power_down(); //if user holds button too long, turn off //TBD: This wigs out, when this happens both routines are writing to screen
+        sleep_for_poll_rate(1000);
+    }
+  } while (button_info[DIE_SELECT_BUTTON].state == IS_HELD);
 
   //go back to main screen
   display.fillScreen(BLACK);
