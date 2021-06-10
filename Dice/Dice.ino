@@ -43,7 +43,11 @@
 /* These are some top level options without touching main code */
 
 // OPTIONS
+#define USE_SPI_OLED //comment or uncomment out the right communication
+//#define USE_IIC_OLED
+
 #define USE_BATTERY //comment out to disable
+#define MAX_BATTERY_VOLTAGE 4.2 //Use 4.5 for a 130k series resistor, use 4.2 for a 100k series resistor
 
 #define NUMBER_OF_TILT_SENSORS 1 //up to 2, set to 0 to disable
 
@@ -75,7 +79,7 @@
 //Not all pins are interchangable, refer to https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
 
 //These are the new pin outs
-#define DEEP_SLEEP_EXIT_PIN 16 // D0 - Wire to RST
+#ifdef USE_IIC_OLED
 #define DISPLAY_SCL_PIN      5 // D1 - I2C
 #define DISPLAY_SDA_PIN      4 // D2 - I2C
 #define ROLL_BUTTON_PIN      0 // D3 - Active Low Input
@@ -83,11 +87,22 @@
 #define TILT_SENSOR_1_PIN   14 // D5 - Active High Interrupt
 #define NEOPIXEL_DATA_PIN   13 // D7 - Data Output
 #define TILT_SENSOR_2_PIN    3 // RX - Active High Interrupt
-#define BATTERY_MONITOR_PIN A0 // A0 - Analog Input
-
-//not used
-#define ROLL_LED_PIN        16 // D0 - Active High Output
-#define DICE_LED_PIN        16 // D0 - Active High Output
+#define BATTERY_MONITOR_PIN A0 // A0 - Analog Input, Connect to battery through 130k resistor
+#define BUTTON_LED_PIN      16 // D0 - Active High Output
+#else //USE_SPI_OLED
+#define OLED_MOSI           D7 // Wemos to D1 on OLED
+#define OLED_CLK            D5 // Wemos to D0 on OLED 
+#define OLED_DC             D1 // Wemos to DC on OLED
+#define OLED_CS             D8 // Wemos to CS on OLED
+#define OLED_RESET          D2 // Wemos to RES OLED
+#define ROLL_BUTTON_PIN     D3 // Active Low Input - WARNING, DO NOT HOLD BUTTON DURING BOOT
+#define DIE_BUTTON_PIN      D4 // Active High Input
+#define TILT_SENSOR_1_PIN    3 // RX, Active High Interrupt
+#define BATTERY_MONITOR_PIN A0 // Analog Input, Connect to battery through 130k resistor
+#define BUTTON_LED_PIN      D0 // Active High Output
+//D6 = MISO
+//TX = GPIO1
+#endif
 
 //screen config
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -99,9 +114,13 @@
 // On an arduino MEGA 2560: 20(SDA), 21(SCL)
 // On an arduino LEONARDO:   2(SDA),  3(SCL),
 // On a D1 Mini:             D2(SDA), D1(SCL)
+#ifdef USE_IIC_OLED
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+#else //USE_SPI_OLED
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
+#endif
 
 #define LOGO_HEIGHT 43 //64
 #define LOGO_WIDTH 128 //82
@@ -134,7 +153,7 @@ enum button_link
 #if NUMBER_OF_TILT_SENSORS > 0
   TILT_INPUT_1,
 #endif
-#if NUMBER_OF_TILT_SENSORS > 1
+#if (NUMBER_OF_TILT_SENSORS > 1) && defined(USE_IIC_OLED)
   TILT_INPUT_2,
 #endif
   /* keep at end of list */
@@ -187,7 +206,7 @@ button_struct button_info[NUMBER_OF_BUTTONS] =
     /* sw_type   = */ TILT_SENSOR,
   },
 #endif
-#if NUMBER_OF_TILT_SENSORS > 1
+#if (NUMBER_OF_TILT_SENSORS > 1) && defined(USE_IIC_OLED)
   {                /* button_info[TILT_INPUT_2] */
   /* pin       = */ TILT_SENSOR_2_PIN,
   /* in_type   = */ ACTIVE_HIGH,
@@ -227,7 +246,12 @@ void setup()
   Serial.println(F("Digital Dice v1.0"));
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+#ifdef USE_IIC_OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
+#else //USE_SPI_OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC))
+#endif
+  {
     Serial.println(F("Display driver failed"));
     for (;;); // Don't proceed, loop forever
   }
@@ -261,10 +285,8 @@ void setup()
   pinMode(BATTERY_MONITOR_PIN, INPUT); //battery monitor, add solder jumper to J2 on the v1.2.0 battery shield. See https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
 #endif
 
-  pinMode(ROLL_LED_PIN, OUTPUT);
-  pinMode(DICE_LED_PIN, OUTPUT);
-  digitalWrite(ROLL_LED_PIN, HIGH);
-  digitalWrite(DICE_LED_PIN, HIGH);
+  pinMode(BUTTON_LED_PIN, OUTPUT);
+  digitalWrite(BUTTON_LED_PIN, HIGH);
 
   display.fillScreen(BLACK); // erase the whole display
   display.drawBitmap((SCREEN_WIDTH - LOGO_WIDTH) / 2, (SCREEN_HEIGHT - LOGO_HEIGHT) / 2, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, 1);
@@ -294,7 +316,7 @@ void loop()
   //button and LED stuff
   poll_input_signals();
   process_button_presses();
-  process_led_state();
+  //process_led_state();
 
   //roll the dice when requested
   if (roll_flag || (tilt_flag && tilt_enabled))
@@ -307,7 +329,7 @@ void loop()
   //power savings
   //check for activity timeout, then light sleep until the next poll interval
   check_for_inactivity_then_power_down();
-  check_for_low_battery_then_power_down();
+  //check_for_low_battery_then_power_down();
   sleep_for_poll_rate(HOW_FAST_BUTTONS_AND_SCREEN_ARE_PROCESSED_IN_MS);
 
 } //end loop
@@ -357,9 +379,6 @@ void check_for_inactivity_then_power_down()
 
   if (millis() >= (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY - 10000))
   {
-    digitalWrite(ROLL_LED_PIN, LOW);
-    digitalWrite(DICE_LED_PIN, LOW);
-
     long seconds = ( (last_activity + DEEP_SLEEP_AFTER_THIS_MANY_MS_OF_INACTIVITY) - millis() ) / 1000;
     shutdown_message(seconds);
   }
@@ -398,8 +417,7 @@ void shutdown_message(long seconds)
 
 void turn_off_oled_and_deep_sleep()
 {
-  digitalWrite(ROLL_LED_PIN, LOW);
-  digitalWrite(DICE_LED_PIN, LOW);
+  digitalWrite(BUTTON_LED_PIN, LOW);
 
   display.fillScreen(BLACK); // erase the whole display
   setup_text_to_display(/* color = */ WHITE, /* size = */ 1, /* x = */ 0, /* y = */ 0);
@@ -434,20 +452,6 @@ void sleep_for_poll_rate(long rate)
   // Exit light sleep mode
 
   wifi_set_sleep_type(NONE_SLEEP_T);
-}
-
-void process_led_state()
-{
-  if (roll_flag || (tilt_flag && tilt_enabled))
-  {
-    digitalWrite(ROLL_LED_PIN, LOW);
-  }
-  else
-  {
-    digitalWrite(ROLL_LED_PIN, HIGH);
-  }
-
-  digitalWrite(DICE_LED_PIN, !digitalRead(button_info[DIE_SELECT_BUTTON].pin));
 }
 
 #if NUMBER_OF_TILT_SENSORS > 0
@@ -809,7 +813,7 @@ float get_battery_voltage()
 {
 #ifdef USE_BATTERY
   float raw = analogRead(BATTERY_MONITOR_PIN);
-  float volts = raw / 1023 * 4.5;
+  float volts = raw / 1023 * MAX_BATTERY_VOLTAGE;
 #else
   float raw = ESP.getVcc();
   float volts = raw / 1000;
@@ -901,7 +905,7 @@ void process_button_presses()
 #if NUMBER_OF_TILT_SENSORS > 0
           case TILT_INPUT_1:
 #endif
-#if NUMBER_OF_TILT_SENSORS > 1
+#if (NUMBER_OF_TILT_SENSORS > 1) && defined(USE_IIC_OLED)
           case TILT_INPUT_2:
 #endif
             Serial.println("Tilt");
@@ -948,7 +952,7 @@ void process_button_presses()
 #if NUMBER_OF_TILT_SENSORS > 0
           case TILT_INPUT_1:
 #endif
-#if NUMBER_OF_TILT_SENSORS > 1
+#if (NUMBER_OF_TILT_SENSORS > 1) && defined(USE_IIC_OLED)
           case TILT_INPUT_2:
 #endif
             //TBD
