@@ -16,6 +16,9 @@ I found TC4056A based USB C chargers for cheap on amazon. https://amzn.to/3uVuUw
 
 Documentation: https://www.addicore.com/TP4056-Charger-and-Protection-Module-p/ad310.htm
 
+The default charing speed on this module is 1A.  That is a charge rate of 2C on a 500mAh lipo.  My lipo datasheet recommends 0.2-1C as the charging speed.
+Swapping the R3 1.2k resistor for a 10k resistor will slow the charging down to a modest 130mA 0.2C.
+
 # Step up Regulator
 
 TBD
@@ -27,15 +30,20 @@ https://amzn.to/34X2uac - 5V step Up Circuit
 The OUT+/- pins on the TC4056A charging module will give you Over-Discharge Protection.
 
 <img src="overdischarge_wiring.jpg" width="500">
+Source: https://www.addicore.com/TP4056-Charger-and-Protection-Module-p/ad310.htm
 
 # Resistor Divider
 
 To read the battery voltage on A0, you will need to divide it down to a voltage safe for the wemos to read.  My code expects a 130Kohm resistor in series with the battery to A0.  Refer to the link for calculating other resistances.
 
-https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
 
 <img src="battery_monitor_wiring.png" width="500">
+Source: https://arduinodiy.wordpress.com/2016/12/25/monitoring-lipo-battery-voltage-with-wemos-d1-minibattery-shield-and-thingspeak/
+	
+# 3D Printing
+
+Use the battery_back_mod_alt_charger files.
 	
 # Wiring
 
-TBD
+Battery -> (B) Charger (OUT) -> (IN) Step Up Regulator (OUT) -> On/Off Switch -> Wemos
