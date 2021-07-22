@@ -2,24 +2,13 @@
 /* Electronic Dice:
 
     Author: Dustin Westaby
-    Date: June 1, 2021
+    Date: June 10, 2021
 
     Sources:
      - 2017 Joe Coburn (joecoburn) https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
      - 2018 Tomas Carlsson (TomasC62) https://www.instructables.com/Arduino-Oled-Dice/
      - 2021 Fernando Hernandez (Dsk001) https://www.prusaprinters.org/prints/66933-electronic-dice
      - 2021 Josh Segatto (alienslacker / alieneila) https://twitter.com/alienslacker/status/1398511306546765828
-
-    Wiring:
-    D2(SDA), D1(SCL) to OLED
-    D0 to RST
-    D3 to Button (ROLL) to Ground
-    D4 to Button (DIE) to 3.3V
-    D5 to Tilt Sensor to Ground
-    RX to Tilt Sensor to Ground
-    D6 to Button LED (ROLL) to Ground
-    D8 to Button LED (DIE) to Ground
-    D7 to Neo Pixel Data
 
     Update the logo_bmp with your own image using LCDAssistant
 
@@ -67,8 +56,11 @@
 
 #include "Arduino.h"
 #include <ESP8266WiFi.h>
-#include <SPI.h>
+#ifdef USE_IIC_OLED
 #include <Wire.h>
+#else
+#include <SPI.h>
+#endif
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
@@ -92,13 +84,13 @@
 #else //USE_SPI_OLED
 #define OLED_MOSI           D7 // Wemos to D1 on OLED
 #define OLED_CLK            D5 // Wemos to D0 on OLED 
-#define OLED_DC             D1 // Wemos to DC on OLED
-#define OLED_CS             D8 // Wemos to CS on OLED
-#define OLED_RESET          D2 // Wemos to RES OLED
-#define ROLL_BUTTON_PIN     D3 // Active Low Input - WARNING, DO NOT HOLD BUTTON DURING BOOT
-#define DIE_BUTTON_PIN      D4 // Active High Input
+#define OLED_CS             D2 // Wemos to CS on OLED
+#define OLED_DC             D3 // Wemos to DC on OLED
+#define OLED_RESET          D4 // Wemos to RES OLED
+#define ROLL_BUTTON_PIN     D1 // Active Low Input
+#define DIE_BUTTON_PIN      D8 // Active High Input
 #define TILT_SENSOR_1_PIN    3 // RX, Active High Interrupt
-#define BATTERY_MONITOR_PIN A0 // Analog Input, Connect to battery through 130k resistor
+#define BATTERY_MONITOR_PIN A0 // Analog Input, Connect to battery through 130k or 100k resistor
 #define BUTTON_LED_PIN      D0 // Active High Output
 //D6 = MISO
 //TX = GPIO1
