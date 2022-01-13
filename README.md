@@ -8,11 +8,11 @@ This version adds:
 * Button debouncing
 * Fixed randomizer
 * Battery monitoring
-* Shake sensor for dice rolls
+* Shake sensor for dice rolls (Tilt switch)
 * Auto Power Off (Deep Sleep)
 * Neopixels
-
-Two tilt sensors are used to detect a shake movement.  This helps provide a more chaotic response. 
+* Magic 8 Ball
+* Supports both I2C and SPI displays
 
 <img src="Images/IMG_0601.JPG" width="500">
 
@@ -20,6 +20,7 @@ Sources:
 * 2017 Joe Coburn https://www.makeuseof.com/tag/roll-style-diy-electronic-d20/
 * 2018 Tomas Carlsson (TomasC62) https://www.instructables.com/Arduino-Oled-Dice/
 * 2021 Fernando Hernandez (Dsk001) https://www.prusaprinters.org/prints/66933-electronic-dice
+* 2021 Joe Larson (3D Printing Professor) https://www.prusaprinters.org/prints/70261-electronic-dice-with-8-ball-function
 
 # Hardware Used:
 
